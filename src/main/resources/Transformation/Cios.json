@@ -1,0 +1,15 @@
+[
+  {
+    "operation": "shift",
+    "spec": {
+      "lessonName": "content.name",
+      "lessonDescription": "content.description",
+      "lessonDuration": "content.duration",
+      "lessonLink": "content.redirectUrl",
+      "imageUrl": "content.appIcon",
+      "lessonCode": "content.externalId",
+      "lessonObjectives": "content.objectives",
+      "lessonTopic": "content.topic"
+    }
+  }
+]
