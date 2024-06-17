@@ -12,7 +12,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
-@RequestMapping("/cios-integration")
+@RequestMapping("/ciosIntegration")
 @Slf4j
 public class CiosContentController {
     @Autowired
