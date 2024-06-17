@@ -12,13 +12,13 @@ import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 @RestController
-@RequestMapping("/cios-integration/v1")
+@RequestMapping("/cios-integration")
 @Slf4j
 public class CiosContentController {
     @Autowired
     CiosContentService ciosContentService;
 
-    @PostMapping(value = "/loadContentFromExcel", consumes = "multipart/form-data")
+    @PostMapping(value = "/v1/loadContentFromExcel", consumes = "multipart/form-data")
     public ResponseEntity<String> loadJobsFromExcel(@RequestParam(value = "file") MultipartFile file) {
         try {
             ciosContentService.loadContentFromExcel(file);
@@ -29,7 +29,7 @@ public class CiosContentController {
         }
     }
 
-    @GetMapping(value = "/fetchContentFromDb")
+    @GetMapping(value = "/v1/readAllContentFromDb")
     public ResponseEntity<?> fetchContentFromDb() {
         try {
             return ResponseEntity.ok(ciosContentService.fetchAllContentFromDb());
