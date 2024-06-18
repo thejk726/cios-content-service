@@ -13,4 +13,4 @@ RUN apt-get update \
 
 COPY cios-content-service-0.0.1-SNAPSHOT.jar /opt/
 #HEALTHCHECK --interval=30s --timeout=30s CMD curl --fail http://localhost:7001/actuator/health || exit 1
-CMD ["java", "-XX:+PrintFlagsFinal", "-XX:+UnlockExperimentalVMOptions", "-XX:+UseCGroupMemoryLimitForHeap", "-jar", "/opt/cios-content-service-0.0.1-SNAPSHOT.jar"]
+CMD ["java", "-XX:+PrintFlagsFinal", "-XX:+UnlockExperimentalVMOptions", "-jar", "/opt/cios-content-service-0.0.1-SNAPSHOT.jar"]
