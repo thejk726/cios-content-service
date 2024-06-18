@@ -14,7 +14,6 @@ node() {
 	}
           stage('docker-pre-build') {
              sh '''
-              cd $docker_file_path
               pwd
               docker build -f ./Dockerfile.build -t $docker_pre_build .
               docker run --name $docker_pre_build $docker_pre_build:latest && docker cp $docker_pre_build:/opt/target/cios-content-service-0.0.1-SNAPSHOT.jar .
