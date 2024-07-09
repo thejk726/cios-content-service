@@ -5,5 +5,6 @@ public class CiosConstants {
 
     }
     public static final String ERROR = "ERROR";
-    public static final String CIOS_DATA_PAYLOAD_VALIDATION_FILE = "/PayloadValidation/CiosFileValidation.json";
+    public static final String CORNELL_DATA_PAYLOAD_VALIDATION_FILE = "/PayloadValidation/CiosFileValidation.json";
+    public static final String CORNELL_PROGRESS_DATA_VALIDATION_FILE = "/PayloadValidation/CornellProgressFileValidation.json";
 }

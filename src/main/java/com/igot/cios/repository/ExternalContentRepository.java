@@ -1,6 +1,7 @@
 package com.igot.cios.repository;
 
-import com.igot.cios.entity.ExternalContentEntity;
+
+import com.igot.cios.entity.CornellContentEntity;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
@@ -8,9 +9,9 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ExternalContentRepository extends JpaRepository<ExternalContentEntity, String> {
+public interface ExternalContentRepository extends JpaRepository<CornellContentEntity, String> {
 
-    Optional<ExternalContentEntity> findByExternalId(String externalId);
+    Optional<CornellContentEntity> findByExternalId(String externalId);
 
-    List<ExternalContentEntity> findByIsActive(boolean b);
+    List<CornellContentEntity> findByIsActive(boolean b);
 }

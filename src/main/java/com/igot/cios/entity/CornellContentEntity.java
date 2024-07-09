@@ -21,7 +21,7 @@ import java.sql.Timestamp;
 @NoArgsConstructor
 @Entity
 @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
-public class ExternalContentEntity implements Serializable {
+public class CornellContentEntity implements Serializable {
     @Id
     private String externalId;
     @Type(type = "jsonb")
