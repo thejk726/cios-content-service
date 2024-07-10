@@ -1,14 +1,14 @@
 package com.igot.cios.service.impl;
 
-
 import com.bazaarvoice.jolt.Chainr;
 import com.bazaarvoice.jolt.JsonUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cios.constant.CiosConstants;
-import com.igot.cios.entity.ExternalContentEntity;
+import com.igot.cios.entity.CornellContentEntity;
 import com.igot.cios.exception.CiosContentException;
+import com.igot.cios.kafka.KafkaProducer;
 import com.igot.cios.repository.ExternalContentRepository;
 import com.igot.cios.service.CiosContentService;
 import com.networknt.schema.JsonSchema;
@@ -21,7 +21,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-
 import java.io.IOException;
 import java.io.InputStream;
 import java.sql.Timestamp;
@@ -36,8 +35,14 @@ public class CiosContentServiceImpl implements CiosContentService {
     private ExternalContentRepository contentRepository;
     @Autowired
     ObjectMapper objectMapper;
+    @Autowired
+    KafkaProducer kafkaProducer;
     @Value("${transformation.source-to-target.spec.path}")
     private String pathOfTragetFile;
+    @Value("${spring.kafka.cornell.topic.name}")
+    private String topic;
+    @Value("${cornell.progress.transformation.source-to-target.spec.path}")
+    private String progressPathOfTragetFile;
 
     @Override
     public void loadContentFromExcel(MultipartFile file) {
@@ -52,7 +57,7 @@ public class CiosContentServiceImpl implements CiosContentService {
     }
 
     @Override
-    public List<ExternalContentEntity> fetchAllContentFromDb() {
+    public List<CornellContentEntity> fetchAllContentFromDb() {
         log.info("CiosContentServiceImpl::fetchAllContentFromDb");
         try {
             return contentRepository.findAll();
@@ -64,15 +69,26 @@ public class CiosContentServiceImpl implements CiosContentService {
         }
     }
 
+    @Override
+    public void loadContentProgressFromExcel(MultipartFile file) {
+        List<Map<String, String>> processedData = processExcelFile(file);
+        log.info("No.of processedData from excel: " + processedData.size());
+        JsonNode jsonData = objectMapper.valueToTree(processedData);
+        jsonData.forEach(
+                eachContentData -> {
+                    callCornellEnrollmentAPI(eachContentData);
+                });
+    }
+
     private void saveOrUpdateContentFromProvider(JsonNode rawContentData) {
         log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
         JsonNode transformData = transformData(rawContentData, pathOfTragetFile);
-        validatePayload(CiosConstants.CIOS_DATA_PAYLOAD_VALIDATION_FILE, transformData);
+        validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
         String externalId = transformData.path("content").path("externalId").asText();
-        Optional<ExternalContentEntity> optExternalContent = contentRepository.findByExternalId(externalId);
+        Optional<CornellContentEntity> optExternalContent = contentRepository.findByExternalId(externalId);
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
         if (optExternalContent.isPresent()) {
-            ExternalContentEntity externalContent = optExternalContent.get();
+            CornellContentEntity externalContent = optExternalContent.get();
             externalContent.setExternalId(externalId);
             externalContent.setCiosData(transformData);
             externalContent.setIsActive(externalContent.getIsActive());
@@ -81,7 +97,7 @@ public class CiosContentServiceImpl implements CiosContentService {
             externalContent.setSourceData(rawContentData);
             contentRepository.save(externalContent);
         } else {
-            ExternalContentEntity externalContent = new ExternalContentEntity();
+            CornellContentEntity externalContent = new CornellContentEntity();
             externalContent.setExternalId(externalId);
             externalContent.setCiosData(transformData);
             externalContent.setIsActive(false);
@@ -90,6 +106,14 @@ public class CiosContentServiceImpl implements CiosContentService {
             externalContent.setSourceData(rawContentData);
             contentRepository.save(externalContent);
         }
+    }
+
+    private void callCornellEnrollmentAPI(JsonNode rawContentData) {
+        log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
+        JsonNode transformData = transformData(rawContentData, progressPathOfTragetFile);
+        validatePayload(CiosConstants.CORNELL_PROGRESS_DATA_VALIDATION_FILE, transformData);
+        kafkaProducer.push(topic,transformData);
+        log.info("callCornellEnrollmentAPI {} ",transformData.asText());
     }
 
     public void validatePayload(String fileName, JsonNode payload) {

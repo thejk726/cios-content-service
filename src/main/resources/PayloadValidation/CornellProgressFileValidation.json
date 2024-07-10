@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "properties": {
+    "userid": {
+      "type": "string",
+      "minLength": 1
+    },
+    "courseid": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completedon": {
+      "type": "string"
+
+    },
+
+    "required": [
+      "userid",
+      "courseid",
+      "completedon"
+    ]
+  },
+  "additionalProperties": false
+}
