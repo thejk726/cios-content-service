@@ -16,12 +16,13 @@ import javax.persistence.Table;
 import java.io.Serializable;
 import java.sql.Timestamp;
 
+
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-@Table(name="external_content_entity")
+@Table(name="cornell_content_entity")
 @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
 public class CornellContentEntity implements Serializable {
     @Id
