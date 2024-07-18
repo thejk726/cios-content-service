@@ -14,6 +14,4 @@ public interface CornellContentRepository extends JpaRepository<CornellContentEn
     Optional<CornellContentEntity> findByExternalId(String externalId);
 
     List<CornellContentEntity> findByIsActive(boolean b);
-
-    List<CornellContentEntity> findAll();
 }
