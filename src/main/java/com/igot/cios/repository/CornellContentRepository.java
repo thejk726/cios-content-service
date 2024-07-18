@@ -9,9 +9,11 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface ExternalContentRepository extends JpaRepository<CornellContentEntity, String> {
+public interface CornellContentRepository extends JpaRepository<CornellContentEntity, String> {
 
     Optional<CornellContentEntity> findByExternalId(String externalId);
 
     List<CornellContentEntity> findByIsActive(boolean b);
+
+    List<CornellContentEntity> findAll();
 }
