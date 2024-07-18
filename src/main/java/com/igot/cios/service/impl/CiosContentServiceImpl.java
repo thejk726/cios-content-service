@@ -9,7 +9,7 @@ import com.igot.cios.constant.CiosConstants;
 import com.igot.cios.entity.CornellContentEntity;
 import com.igot.cios.exception.CiosContentException;
 import com.igot.cios.kafka.KafkaProducer;
-import com.igot.cios.repository.ExternalContentRepository;
+import com.igot.cios.repository.CornellContentRepository;
 import com.igot.cios.service.CiosContentService;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
@@ -32,7 +32,7 @@ import java.util.*;
 @Slf4j
 public class CiosContentServiceImpl implements CiosContentService {
     @Autowired
-    private ExternalContentRepository contentRepository;
+    private CornellContentRepository contentRepository;
     @Autowired
     ObjectMapper objectMapper;
     @Autowired
