@@ -10,7 +10,7 @@ import java.util.List;
 
 @Service
 public interface CiosContentService {
-    void loadContentFromExcel(MultipartFile file) throws IOException;
+    void loadContentFromExcel(MultipartFile file,String name) throws IOException;
     List<CornellContentEntity> fetchAllContentFromDb();
 
     void loadContentProgressFromExcel(MultipartFile file);

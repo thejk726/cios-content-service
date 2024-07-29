@@ -6,11 +6,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cios.constant.CiosConstants;
+import com.igot.cios.constant.ContentSource;
 import com.igot.cios.entity.CornellContentEntity;
+import com.igot.cios.entity.UpgradContentEntity;
 import com.igot.cios.exception.CiosContentException;
 import com.igot.cios.kafka.KafkaProducer;
 import com.igot.cios.repository.CornellContentRepository;
+import com.igot.cios.repository.UpgradContentRepository;
 import com.igot.cios.service.CiosContentService;
+import com.igot.cios.util.PayloadValidation;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
@@ -28,31 +32,39 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 
+
 @Service
 @Slf4j
 public class CiosContentServiceImpl implements CiosContentService {
     @Autowired
     private CornellContentRepository contentRepository;
     @Autowired
+    private UpgradContentRepository upgradContentRepository;
+    @Autowired
     ObjectMapper objectMapper;
     @Autowired
     KafkaProducer kafkaProducer;
-    @Value("${transformation.source-to-target.spec.path}")
-    private String pathOfTragetFile;
+    @Autowired
+    PayloadValidation payloadValidation;
     @Value("${spring.kafka.cornell.topic.name}")
     private String topic;
     @Value("${cornell.progress.transformation.source-to-target.spec.path}")
     private String progressPathOfTragetFile;
 
     @Override
-    public void loadContentFromExcel(MultipartFile file) {
+    public void loadContentFromExcel(MultipartFile file,String providerName) {
         log.info("CiosContentServiceImpl::loadJobsFromExcel");
         List<Map<String, String>> processedData = processExcelFile(file);
         log.info("No.of processedData from excel: " + processedData.size());
         JsonNode jsonData = objectMapper.valueToTree(processedData);
+        ContentSource contentSource = ContentSource.fromProviderName(providerName);
+        if (contentSource == null) {
+            log.warn("Unknown provider name: " + providerName);
+            return; // Exit if the provider name is not recognized
+        }
         jsonData.forEach(
                 eachContentData -> {
-                    saveOrUpdateContentFromProvider(eachContentData);
+                    saveOrUpdateContentFromProvider(eachContentData,contentSource);
                 });
     }
 
@@ -80,13 +92,48 @@ public class CiosContentServiceImpl implements CiosContentService {
                 });
     }
 
-    private void saveOrUpdateContentFromProvider(JsonNode rawContentData) {
+    private void saveOrUpdateContentFromProvider(JsonNode rawContentData,ContentSource source) {
         log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
-        JsonNode transformData = transformData(rawContentData, pathOfTragetFile);
-        validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
+        JsonNode transformData = transformData(rawContentData, source.getFilePath());
+        payloadValidation.validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
         String externalId = transformData.path("content").path("externalId").asText();
-        Optional<CornellContentEntity> optExternalContent = contentRepository.findByExternalId(externalId);
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+        switch (source) {
+            case CORNELL:
+                saveOrUpdateCornellContent(externalId, transformData, rawContentData, currentTime);
+                break;
+            case UPGRAD:
+                saveOrUpdateUpgradContent(externalId, transformData, rawContentData, currentTime);
+                break;
+        }
+
+    }
+
+    private void saveOrUpdateUpgradContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime) {
+        Optional<UpgradContentEntity> optExternalContent = upgradContentRepository.findByExternalId(externalId);
+        if (optExternalContent.isPresent()) {
+            UpgradContentEntity externalContent = optExternalContent.get();
+            externalContent.setExternalId(externalId);
+            externalContent.setCiosData(transformData);
+            externalContent.setIsActive(externalContent.getIsActive());
+            externalContent.setCreatedDate(externalContent.getCreatedDate());
+            externalContent.setUpdatedDate(currentTime);
+            externalContent.setSourceData(rawContentData);
+            upgradContentRepository.save(externalContent);
+        } else {
+            UpgradContentEntity externalContent = new UpgradContentEntity();
+            externalContent.setExternalId(externalId);
+            externalContent.setCiosData(transformData);
+            externalContent.setIsActive(false);
+            externalContent.setCreatedDate(currentTime);
+            externalContent.setUpdatedDate(currentTime);
+            externalContent.setSourceData(rawContentData);
+            upgradContentRepository.save(externalContent);
+        }
+    }
+
+    private void saveOrUpdateCornellContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime) {
+        Optional<CornellContentEntity> optExternalContent = contentRepository.findByExternalId(externalId);
         if (optExternalContent.isPresent()) {
             CornellContentEntity externalContent = optExternalContent.get();
             externalContent.setExternalId(externalId);
@@ -107,33 +154,12 @@ public class CiosContentServiceImpl implements CiosContentService {
             contentRepository.save(externalContent);
         }
     }
-
     private void callCornellEnrollmentAPI(JsonNode rawContentData) {
         log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
         JsonNode transformData = transformData(rawContentData, progressPathOfTragetFile);
-        validatePayload(CiosConstants.CORNELL_PROGRESS_DATA_VALIDATION_FILE, transformData);
+        payloadValidation.validatePayload(CiosConstants.CORNELL_PROGRESS_DATA_VALIDATION_FILE, transformData);
         kafkaProducer.push(topic,transformData);
         log.info("callCornellEnrollmentAPI {} ",transformData.asText());
-    }
-
-    public void validatePayload(String fileName, JsonNode payload) {
-        log.info("CiosContentServiceImpl::validatePayload");
-        try {
-            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
-            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(fileName);
-            JsonSchema schema = schemaFactory.getSchema(schemaStream);
-
-            Set<ValidationMessage> validationMessages = schema.validate(payload);
-            if (!validationMessages.isEmpty()) {
-                StringBuilder errorMessage = new StringBuilder("Validation error(s): \n");
-                for (ValidationMessage message : validationMessages) {
-                    errorMessage.append(message.getMessage()).append("\n");
-                }
-                throw new CiosContentException(CiosConstants.ERROR, errorMessage.toString());
-            }
-        } catch (Exception e) {
-            throw new CiosContentException(CiosConstants.ERROR, "Failed to validate payload: " + e.getMessage());
-        }
     }
 
     private JsonNode transformData(Object sourceObject, String destinationPath) {
@@ -149,8 +175,6 @@ public class CiosContentServiceImpl implements CiosContentService {
         Object transformedOutput = chainr.transform(JsonUtils.jsonToObject(inputJson));
         return objectMapper.convertValue(transformedOutput, JsonNode.class);
     }
-
-
     private List<Map<String, String>> processExcelFile(MultipartFile incomingFile) {
         log.info("CiosContentServiceImpl::processExcelFile");
         try {
