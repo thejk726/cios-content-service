@@ -8,8 +8,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/ciosIntegration")
 @Slf4j
@@ -18,9 +16,9 @@ public class CiosContentController {
     CiosContentService ciosContentService;
 
     @PostMapping(value = "/v1/loadContentFromExcel", consumes = "multipart/form-data")
-    public ResponseEntity<String> loadContentFromExcel(@RequestParam(value = "file") MultipartFile file) {
+    public ResponseEntity<String> loadContentFromExcel(@RequestParam(value = "file") MultipartFile file,@RequestParam(value="partnerName")String name) {
         try {
-            ciosContentService.loadContentFromExcel(file);
+            ciosContentService.loadContentFromExcel(file,name);
             return ResponseEntity.ok("Loading of content from excel is successful.");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
@@ -28,13 +26,13 @@ public class CiosContentController {
         }
     }
 
-    @GetMapping(value = "/v1/readAllContentFromDb")
-    public ResponseEntity<?> fetchContentFromDb() {
+    @GetMapping(value = "/v1/readAllContentFromDb/{providername}")
+    public ResponseEntity<?> fetchContentFromDb(@PathVariable String providername) {
         try {
-            return ResponseEntity.ok(ciosContentService.fetchAllContentFromDb());
+            return ResponseEntity.ok(ciosContentService.fetchAllContentFromDb(providername));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error during loading of content from excel: " + e.getMessage());
+                    .body("Error during fetching of content from db: " + e.getMessage());
         }
     }
 
