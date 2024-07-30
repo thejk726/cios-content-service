@@ -1,7 +1,7 @@
 package com.igot.cios.service;
 
 
-import com.igot.cios.entity.CornellContentEntity;
+import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -11,7 +11,6 @@ import java.util.List;
 @Service
 public interface CiosContentService {
     void loadContentFromExcel(MultipartFile file,String name) throws IOException;
-    List<CornellContentEntity> fetchAllContentFromDb();
-
+    List<JsonNode> fetchAllContentFromDb(String providerName);
     void loadContentProgressFromExcel(MultipartFile file);
 }

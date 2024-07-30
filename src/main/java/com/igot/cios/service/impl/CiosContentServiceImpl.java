@@ -15,9 +15,6 @@ import com.igot.cios.repository.CornellContentRepository;
 import com.igot.cios.repository.UpgradContentRepository;
 import com.igot.cios.service.CiosContentService;
 import com.igot.cios.util.PayloadValidation;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.ValidationMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -60,25 +57,68 @@ public class CiosContentServiceImpl implements CiosContentService {
         ContentSource contentSource = ContentSource.fromProviderName(providerName);
         if (contentSource == null) {
             log.warn("Unknown provider name: " + providerName);
-            return; // Exit if the provider name is not recognized
+            return;
         }
-        jsonData.forEach(
-                eachContentData -> {
-                    saveOrUpdateContentFromProvider(eachContentData,contentSource);
+        List<CornellContentEntity> cornellContentEntityList = new ArrayList<>();
+        List<UpgradContentEntity> upgradContentEntityList=new ArrayList<>();
+        switch (contentSource) {
+            case CORNELL:
+                log.info("inside cornell data");
+                jsonData.forEach(eachContentData->{
+                    JsonNode transformData = transformData(eachContentData, contentSource.getFilePath());
+                    payloadValidation.validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
+                    String externalId = transformData.path("content").path("externalId").asText();
+                    Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+                    CornellContentEntity cornellContentEntity=saveOrUpdateCornellContent(externalId, transformData, eachContentData, currentTime);
+                    cornellContentEntityList.add(cornellContentEntity);
                 });
+                cornellBulkSave(cornellContentEntityList);
+                break;
+            case UPGRAD:
+                log.info("inside upgrad data");
+                jsonData.forEach(eachContentData->{
+                    JsonNode transformData = transformData(eachContentData, contentSource.getFilePath());
+                    payloadValidation.validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
+                    String externalId = transformData.path("content").path("externalId").asText();
+                    Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+                    UpgradContentEntity upgradContentEntity=saveOrUpdateUpgradContent(externalId, transformData, eachContentData, currentTime);
+                    upgradContentEntityList.add(upgradContentEntity);
+                });
+                upgradBulkSave(upgradContentEntityList);
+                break;
+        }
+    }
+
+    private void upgradBulkSave(List<UpgradContentEntity> upgradContentEntityList) {
+        upgradContentRepository.saveAll(upgradContentEntityList);
+    }
+
+    private void cornellBulkSave(List<CornellContentEntity> cornellContentEntityList) {
+        contentRepository.saveAll(cornellContentEntityList);
     }
 
     @Override
-    public List<CornellContentEntity> fetchAllContentFromDb() {
-        log.info("CiosContentServiceImpl::fetchAllContentFromDb");
+    public List<JsonNode> fetchAllContentFromDb(String providerName) {
+        log.info("CiosContentServiceImpl::fetchAllCornellContentFromDb");
+        ContentSource contentSource = ContentSource.fromProviderName(providerName);
+        if (contentSource == null) {
+            log.warn("Unknown provider name: " + providerName);
+            return null; // Exit if the provider name is not recognized
+        }
         try {
-            return contentRepository.findAll();
+            switch (contentSource) {
+                case CORNELL:
+                    return contentRepository.findAllCiosData();
+                case UPGRAD:
+                    return upgradContentRepository.findAllCiosData();
+            }
         } catch (DataAccessException dae) {
             log.error("Database access error while fetching content", dae.getMessage());
             throw new CiosContentException(CiosConstants.ERROR, "Database access error: " + dae.getMessage());
         } catch (Exception e) {
             throw new CiosContentException(CiosConstants.ERROR, e.getMessage());
         }
+        return null;
     }
 
     @Override
@@ -92,24 +132,7 @@ public class CiosContentServiceImpl implements CiosContentService {
                 });
     }
 
-    private void saveOrUpdateContentFromProvider(JsonNode rawContentData,ContentSource source) {
-        log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
-        JsonNode transformData = transformData(rawContentData, source.getFilePath());
-        payloadValidation.validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
-        String externalId = transformData.path("content").path("externalId").asText();
-        Timestamp currentTime = new Timestamp(System.currentTimeMillis());
-        switch (source) {
-            case CORNELL:
-                saveOrUpdateCornellContent(externalId, transformData, rawContentData, currentTime);
-                break;
-            case UPGRAD:
-                saveOrUpdateUpgradContent(externalId, transformData, rawContentData, currentTime);
-                break;
-        }
-
-    }
-
-    private void saveOrUpdateUpgradContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime) {
+    private UpgradContentEntity saveOrUpdateUpgradContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime) {
         Optional<UpgradContentEntity> optExternalContent = upgradContentRepository.findByExternalId(externalId);
         if (optExternalContent.isPresent()) {
             UpgradContentEntity externalContent = optExternalContent.get();
@@ -119,7 +142,7 @@ public class CiosContentServiceImpl implements CiosContentService {
             externalContent.setCreatedDate(externalContent.getCreatedDate());
             externalContent.setUpdatedDate(currentTime);
             externalContent.setSourceData(rawContentData);
-            upgradContentRepository.save(externalContent);
+            return externalContent;
         } else {
             UpgradContentEntity externalContent = new UpgradContentEntity();
             externalContent.setExternalId(externalId);
@@ -128,11 +151,11 @@ public class CiosContentServiceImpl implements CiosContentService {
             externalContent.setCreatedDate(currentTime);
             externalContent.setUpdatedDate(currentTime);
             externalContent.setSourceData(rawContentData);
-            upgradContentRepository.save(externalContent);
+            return externalContent;
         }
     }
 
-    private void saveOrUpdateCornellContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime) {
+    private CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime) {
         Optional<CornellContentEntity> optExternalContent = contentRepository.findByExternalId(externalId);
         if (optExternalContent.isPresent()) {
             CornellContentEntity externalContent = optExternalContent.get();
@@ -142,7 +165,7 @@ public class CiosContentServiceImpl implements CiosContentService {
             externalContent.setCreatedDate(externalContent.getCreatedDate());
             externalContent.setUpdatedDate(currentTime);
             externalContent.setSourceData(rawContentData);
-            contentRepository.save(externalContent);
+            return externalContent;
         } else {
             CornellContentEntity externalContent = new CornellContentEntity();
             externalContent.setExternalId(externalId);
@@ -151,8 +174,9 @@ public class CiosContentServiceImpl implements CiosContentService {
             externalContent.setCreatedDate(currentTime);
             externalContent.setUpdatedDate(currentTime);
             externalContent.setSourceData(rawContentData);
-            contentRepository.save(externalContent);
+            return externalContent;
         }
+
     }
     private void callCornellEnrollmentAPI(JsonNode rawContentData) {
         log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
