@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cios.constant.CiosConstants;
 import com.igot.cios.constant.ContentSource;
 import com.igot.cios.dto.PaginatedResponse;
+import com.igot.cios.dto.RequestDto;
 import com.igot.cios.entity.CornellContentEntity;
 import com.igot.cios.entity.UpgradContentEntity;
 import com.igot.cios.exception.CiosContentException;
@@ -107,22 +108,22 @@ public class CiosContentServiceImpl implements CiosContentService {
     }
 
     @Override
-    public PaginatedResponse<Object> fetchAllContentFromDb(String providerName, Boolean isActive, int page, int size) {
+    public PaginatedResponse<Object> fetchAllContentFromDb(RequestDto dto) {
         log.info("CiosContentServiceImpl::fetchAllCornellContentFromDb");
-        Pageable pageable= PageRequest.of(page, size);
-        ContentSource contentSource = ContentSource.fromProviderName(providerName);
+        Pageable pageable= PageRequest.of(dto.getPage(), dto.getSize());
+        ContentSource contentSource = ContentSource.fromProviderName(dto.getProviderName());
         if (contentSource == null) {
-            log.warn("Unknown provider name: " + providerName);
+            log.warn("Unknown provider name: " + dto.getProviderName());
             return null;
         }
         try {
             Page<Object> pageData = null;
             switch (contentSource) {
                 case CORNELL:
-                    pageData= contentRepository.findAllCiosDataAndIsActive(isActive,pageable);
+                    pageData= contentRepository.findAllCiosDataAndIsActive(dto.getIsActive(),pageable);
                     break;
                 case UPGRAD:
-                    pageData= upgradContentRepository.findAllCiosDataAndIsActive(isActive,pageable);
+                    pageData= upgradContentRepository.findAllCiosDataAndIsActive(dto.getIsActive(),pageable);
                     break;
             }
             return new PaginatedResponse<>(
