@@ -27,9 +27,12 @@ public class CiosContentController {
     }
 
     @GetMapping(value = "/v1/readAllContentFromDb/{providername}")
-    public ResponseEntity<?> fetchContentFromDb(@PathVariable String providername) {
+    public ResponseEntity<?> fetchContentFromDb(@PathVariable String providername,
+                                                @RequestParam(defaultValue = "false") Boolean isactive,
+                                                @RequestParam(defaultValue = "0") int page,
+                                                @RequestParam(defaultValue = "10") int size) {
         try {
-            return ResponseEntity.ok(ciosContentService.fetchAllContentFromDb(providername));
+            return ResponseEntity.ok(ciosContentService.fetchAllContentFromDb(providername,isactive,page,size));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error during fetching of content from db: " + e.getMessage());

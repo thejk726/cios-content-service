@@ -1,16 +1,18 @@
 package com.igot.cios.service;
 
 
-import com.fasterxml.jackson.databind.JsonNode;
+import com.igot.cios.dto.PaginatedResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.util.List;
+
 
 @Service
 public interface CiosContentService {
-    void loadContentFromExcel(MultipartFile file,String name) throws IOException;
-    List<JsonNode> fetchAllContentFromDb(String providerName);
+    void loadContentFromExcel(MultipartFile file, String name) throws IOException;
+
+    PaginatedResponse<Object> fetchAllContentFromDb(String providerName, Boolean isActive, int page, int size);
+
     void loadContentProgressFromExcel(MultipartFile file);
 }
