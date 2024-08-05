@@ -16,7 +16,7 @@ public enum ContentSource {
 
     public static ContentSource fromProviderName(String providerName) {
         switch (providerName.toLowerCase()) {
-            case "cornell":
+            case "eCornell":
                 return CORNELL;
             case "upgrad":
                 return UPGRAD;
