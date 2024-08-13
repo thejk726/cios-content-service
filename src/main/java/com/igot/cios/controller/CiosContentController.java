@@ -38,9 +38,9 @@ public class CiosContentController {
     }
 
     @PostMapping(value = "/v1/loadContentProgressFromExcel", consumes = "multipart/form-data")
-    public ResponseEntity<String> loadContentProgressFromExcel(@RequestParam(value = "file") MultipartFile file) {
+    public ResponseEntity<String> loadContentProgressFromExcel(@RequestParam(value = "file") MultipartFile file,@RequestParam(value="partnerName") String providerName) {
         try {
-            ciosContentService.loadContentProgressFromExcel(file);
+            ciosContentService.loadContentProgressFromExcel(file,providerName);
             return ResponseEntity.ok("Loading of content from excel is successful.");
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

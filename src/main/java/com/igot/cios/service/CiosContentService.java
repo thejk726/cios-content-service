@@ -3,6 +3,7 @@ package com.igot.cios.service;
 
 import com.igot.cios.dto.PaginatedResponse;
 import com.igot.cios.dto.RequestDto;
+import com.igot.cios.entity.ContentPartnerEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -15,5 +16,7 @@ public interface CiosContentService {
 
     PaginatedResponse<Object> fetchAllContentFromDb(RequestDto dto);
 
-    void loadContentProgressFromExcel(MultipartFile file);
+    void loadContentProgressFromExcel(MultipartFile file,String providerName);
+
+    ContentPartnerEntity getContentDetailsByPartnerName(String name);
 }

@@ -3,21 +3,27 @@ package com.igot.cios.service.impl;
 import com.bazaarvoice.jolt.Chainr;
 import com.bazaarvoice.jolt.JsonUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.igot.cios.constant.CiosConstants;
 import com.igot.cios.constant.ContentSource;
 import com.igot.cios.dto.PaginatedResponse;
 import com.igot.cios.dto.RequestDto;
+import com.igot.cios.entity.ContentPartnerEntity;
 import com.igot.cios.entity.CornellContentEntity;
 import com.igot.cios.entity.UpgradContentEntity;
 import com.igot.cios.exception.CiosContentException;
 import com.igot.cios.kafka.KafkaProducer;
+import com.igot.cios.repository.ContentPartnerRepository;
 import com.igot.cios.repository.CornellContentRepository;
 import com.igot.cios.repository.UpgradContentRepository;
 import com.igot.cios.service.CiosContentService;
+import com.igot.cios.util.Constants;
 import com.igot.cios.util.PayloadValidation;
+import com.igot.cios.util.cache.CacheService;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.apache.poi.ss.usermodel.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -25,6 +31,7 @@ import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -49,6 +56,10 @@ public class CiosContentServiceImpl implements CiosContentService {
     KafkaProducer kafkaProducer;
     @Autowired
     PayloadValidation payloadValidation;
+    @Autowired
+    private ContentPartnerRepository contentPartnerRepository;
+    @Autowired
+    private CacheService cacheService;
     @Value("${spring.kafka.cornell.topic.name}")
     private String topic;
     @Value("${cornell.progress.transformation.source-to-target.spec.path}")
@@ -66,13 +77,18 @@ public class CiosContentServiceImpl implements CiosContentService {
                 log.warn("Unknown provider name: " + providerName);
                 return;
             }
+            ContentPartnerEntity entity=getContentDetailsByPartnerName(providerName);
+            List<Object> contentJson= objectMapper.convertValue(entity.getTrasformContentJson(), new TypeReference<List<Object>>() {});
+            if(contentJson==null||contentJson.isEmpty()){
+                throw new CiosContentException("Transformation data not present in content partner db",HttpStatus.INTERNAL_SERVER_ERROR);
+            }
             List<CornellContentEntity> cornellContentEntityList = new ArrayList<>();
             List<UpgradContentEntity> upgradContentEntityList = new ArrayList<>();
             switch (contentSource) {
                 case CORNELL:
                     log.info("inside cornell data");
                     jsonData.forEach(eachContentData -> {
-                        JsonNode transformData = transformData(eachContentData, contentSource.getFilePath());
+                        JsonNode transformData = transformData(eachContentData, contentJson);
                         payloadValidation.validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
                         String externalId = transformData.path("content").path("externalId").asText();
                         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
@@ -84,7 +100,7 @@ public class CiosContentServiceImpl implements CiosContentService {
                 case UPGRAD:
                     log.info("inside upgrad data");
                     jsonData.forEach(eachContentData -> {
-                        JsonNode transformData = transformData(eachContentData, contentSource.getFilePath());
+                        JsonNode transformData = transformData(eachContentData, contentJson);
                         payloadValidation.validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
                         String externalId = transformData.path("content").path("externalId").asText();
                         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
@@ -144,14 +160,46 @@ public class CiosContentServiceImpl implements CiosContentService {
     }
 
     @Override
-    public void loadContentProgressFromExcel(MultipartFile file) {
-        List<Map<String, String>> processedData = processExcelFile(file);
-        log.info("No.of processedData from excel: " + processedData.size());
-        JsonNode jsonData = objectMapper.valueToTree(processedData);
-        jsonData.forEach(
-                eachContentData -> {
-                    callCornellEnrollmentAPI(eachContentData);
-                });
+    public void loadContentProgressFromExcel(MultipartFile file,String providerName) {
+        try {
+            List<Map<String, String>> processedData = processExcelFile(file);
+            log.info("No.of processedData from excel: " + processedData.size());
+            JsonNode jsonData = objectMapper.valueToTree(processedData);
+            jsonData.forEach(
+                    eachContentData -> {
+                        callCornellEnrollmentAPI(eachContentData,providerName);
+                    });
+        }catch (Exception e){
+            throw new CiosContentException(e.getMessage(),HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @Override
+    public ContentPartnerEntity getContentDetailsByPartnerName(String name) {
+        log.info("CiosContentService:: ContentPartnerEntity: getContentDetailsByPartnerName {}",name);
+        try {
+            ContentPartnerEntity entity=null;
+            String cachedJson = cacheService.getCache(Constants.CONTENT_PARTNER_REDIS_KEY_PREFIX+name);
+            if (StringUtils.isNotEmpty(cachedJson)) {
+                log.info("Record coming from redis cache");
+                entity=objectMapper.readValue(cachedJson, new TypeReference<ContentPartnerEntity>() {});
+                return entity;
+            } else {
+                Optional<ContentPartnerEntity> entityOptional = contentPartnerRepository.findByContentPartnerName(name);
+                if (entityOptional.isPresent()) {
+                    log.info("Record coming from postgres db");
+                    entity = entityOptional.get();
+                    cacheService.putCache(Constants.CONTENT_PARTNER_REDIS_KEY_PREFIX+name,entity);
+                    return entity;
+
+                } else {
+                throw new CiosContentException("Content Partner Data not present in DB",HttpStatus.BAD_REQUEST);
+                }
+            }
+        } catch (Exception e) {
+            log.error("error while processing", e);
+            throw new CiosContentException(e.getMessage(),HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     private UpgradContentEntity saveOrUpdateUpgradContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime) {
@@ -200,18 +248,38 @@ public class CiosContentServiceImpl implements CiosContentService {
         }
 
     }
-    private void callCornellEnrollmentAPI(JsonNode rawContentData) {
-        log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
-        JsonNode transformData = transformData(rawContentData, progressPathOfTragetFile);
-        payloadValidation.validatePayload(CiosConstants.CORNELL_PROGRESS_DATA_VALIDATION_FILE, transformData);
-        kafkaProducer.push(topic,transformData);
-        log.info("callCornellEnrollmentAPI {} ",transformData.asText());
+    private void callCornellEnrollmentAPI(JsonNode rawContentData,String providerName) {
+        try {
+            log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
+            ContentPartnerEntity entity=getContentDetailsByPartnerName(providerName);
+            List<Object> contentJson= objectMapper.convertValue(entity.getTransformProgressJson(), new TypeReference<List<Object>>() {});
+            JsonNode transformData = transformData(rawContentData, contentJson);
+            payloadValidation.validatePayload(CiosConstants.CORNELL_PROGRESS_DATA_VALIDATION_FILE, transformData);
+            kafkaProducer.push(topic, transformData);
+            log.info("callCornellEnrollmentAPI {} ", transformData.asText());
+        }catch (Exception e) {
+            log.error("error while processing", e);
+            throw new CiosContentException(e.getMessage(),HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
-    private JsonNode transformData(Object sourceObject, String destinationPath) {
+    private JsonNode transformData(Object sourceObject, List<Object> specJson) {
         log.debug("CiosContentServiceImpl::transformData");
         try {
         String inputJson = objectMapper.writeValueAsString(sourceObject);
+            Chainr chainr = Chainr.fromSpec(specJson);
+            Object transformedOutput = chainr.transform(JsonUtils.jsonToObject(inputJson));
+            return objectMapper.convertValue(transformedOutput, JsonNode.class);
+        } catch (JsonProcessingException e) {
+            log.error("Error transforming data", e);
+            return null;
+        }
+
+    }
+    private JsonNode transformData(Object sourceObject, String destinationPath) {
+        log.debug("CiosContentServiceImpl::transformData");
+        try {
+            String inputJson = objectMapper.writeValueAsString(sourceObject);
             List<Object> specJson = JsonUtils.classpathToList(destinationPath);
             Chainr chainr = Chainr.fromSpec(specJson);
             Object transformedOutput = chainr.transform(JsonUtils.jsonToObject(inputJson));
