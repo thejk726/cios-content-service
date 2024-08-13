@@ -1,7 +1,6 @@
 package com.igot.cios.repository;
 
-
-import com.igot.cios.entity.CornellContentEntity;
+import com.igot.cios.entity.UpgradContentEntity;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -13,12 +12,11 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CornellContentRepository extends JpaRepository<CornellContentEntity, String> {
+public interface UpgradContentRepository extends JpaRepository<UpgradContentEntity, String> {
 
-    Optional<CornellContentEntity> findByExternalId(String externalId);
+    Optional<UpgradContentEntity> findByExternalId(String externalId);
 
-    List<CornellContentEntity> findByIsActive(boolean b);
-
-    @Query("SELECT c.ciosData FROM CornellContentEntity c WHERE c.isActive = :isActive")
+    List<UpgradContentEntity> findByIsActive(boolean b);
+    @Query("SELECT c.ciosData FROM UpgradContentEntity c WHERE c.isActive = :isActive")
     Page<Object> findAllCiosDataAndIsActive(@Param("isActive") Boolean isActive, Pageable pageable);
 }

@@ -30,8 +30,14 @@ public class CiosContentException extends RuntimeException{
         this.httpStatusCode = httpStatusCode;
     }
 
+    public CiosContentException(String message, HttpStatus httpStatusCode) {
+        this.message = message;
+        this.httpStatusCode = httpStatusCode;
+    }
+
     public CiosContentException(Map<String, String> errors) {
         this.message = errors.toString();
         this.errors = errors;
     }
+
 }
