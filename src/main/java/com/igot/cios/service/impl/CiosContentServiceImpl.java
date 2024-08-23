@@ -45,7 +45,6 @@ import java.text.SimpleDateFormat;
 import java.util.*;
 
 
-
 @Service
 @Slf4j
 public class CiosContentServiceImpl implements CiosContentService {
@@ -71,11 +70,11 @@ public class CiosContentServiceImpl implements CiosContentService {
     private FileInfoRepository fileInfoRepository;
 
     @Override
-    public void loadContentFromExcel(MultipartFile file,String providerName) {
+    public void loadContentFromExcel(MultipartFile file, String providerName) {
         log.info("CiosContentServiceImpl::loadJobsFromExcel");
         String fileName = file.getOriginalFilename();
         Timestamp initiatedOn = new Timestamp(System.currentTimeMillis());
-        String fileId= createFileInfo( null,fileName,initiatedOn, null,null);
+        String fileId = createFileInfo(null, fileName, initiatedOn, null, null);
         try {
             List<Map<String, String>> processedData = processExcelFile(file);
             log.info("No.of processedData from excel: " + processedData.size());
@@ -89,10 +88,11 @@ public class CiosContentServiceImpl implements CiosContentService {
                 log.warn("Unknown provider name: " + providerName);
                 return;
             }
-            ContentPartnerEntity entity=getContentDetailsByPartnerName(providerName);
-            List<Object> contentJson= objectMapper.convertValue(entity.getTrasformContentJson(), new TypeReference<List<Object>>() {});
-            if(contentJson==null||contentJson.isEmpty()){
-                throw new CiosContentException("Transformation data not present in content partner db",HttpStatus.INTERNAL_SERVER_ERROR);
+            ContentPartnerEntity entity = getContentDetailsByPartnerName(providerName);
+            List<Object> contentJson = objectMapper.convertValue(entity.getTrasformContentJson(), new TypeReference<List<Object>>() {
+            });
+            if (contentJson == null || contentJson.isEmpty()) {
+                throw new CiosContentException("Transformation data not present in content partner db", HttpStatus.INTERNAL_SERVER_ERROR);
             }
             List<CornellContentEntity> cornellContentEntityList = new ArrayList<>();
             List<UpgradContentEntity> upgradContentEntityList = new ArrayList<>();
@@ -263,25 +263,27 @@ public class CiosContentServiceImpl implements CiosContentService {
         }
 
     }
-    private void callCornellEnrollmentAPI(JsonNode rawContentData,String providerName) {
+
+    private void callCornellEnrollmentAPI(JsonNode rawContentData, String providerName) {
         try {
             log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
-            ContentPartnerEntity entity=getContentDetailsByPartnerName(providerName);
-            List<Object> contentJson= objectMapper.convertValue(entity.getTransformProgressJson(), new TypeReference<List<Object>>() {});
+            ContentPartnerEntity entity = getContentDetailsByPartnerName(providerName);
+            List<Object> contentJson = objectMapper.convertValue(entity.getTransformProgressJson(), new TypeReference<List<Object>>() {
+            });
             JsonNode transformData = transformData(rawContentData, contentJson);
             payloadValidation.validatePayload(CiosConstants.CORNELL_PROGRESS_DATA_VALIDATION_FILE, transformData);
             kafkaProducer.push(topic, transformData);
             log.info("callCornellEnrollmentAPI {} ", transformData.asText());
-        }catch (Exception e) {
+        } catch (Exception e) {
             log.error("error while processing", e);
-            throw new CiosContentException(e.getMessage(),HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new CiosContentException(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 
     private JsonNode transformData(Object sourceObject, List<Object> specJson) {
         log.debug("CiosContentServiceImpl::transformData");
         try {
-        String inputJson = objectMapper.writeValueAsString(sourceObject);
+            String inputJson = objectMapper.writeValueAsString(sourceObject);
             Chainr chainr = Chainr.fromSpec(specJson);
             Object transformedOutput = chainr.transform(JsonUtils.jsonToObject(inputJson));
             return objectMapper.convertValue(transformedOutput, JsonNode.class);
@@ -291,6 +293,7 @@ public class CiosContentServiceImpl implements CiosContentService {
         }
 
     }
+
     private JsonNode transformData(Object sourceObject, String destinationPath) {
         log.debug("CiosContentServiceImpl::transformData");
         try {
@@ -305,6 +308,7 @@ public class CiosContentServiceImpl implements CiosContentService {
         }
 
     }
+
     private List<Map<String, String>> processExcelFile(MultipartFile incomingFile) {
         log.debug("CiosContentServiceImpl::processExcelFile");
         try {
@@ -317,8 +321,7 @@ public class CiosContentServiceImpl implements CiosContentService {
 
     private List<Map<String, String>> validateFileAndProcessRows(MultipartFile file) {
         log.debug("CiosContentServiceImpl::validateFileAndProcessRows");
-        try (InputStream inputStream = file.getInputStream();
-             Workbook workbook = WorkbookFactory.create(inputStream)) {
+        try (InputStream inputStream = file.getInputStream(); Workbook workbook = WorkbookFactory.create(inputStream)) {
             Sheet sheet = workbook.getSheetAt(0);
             return processSheetAndSendMessage(sheet);
         } catch (IOException e) {
@@ -347,13 +350,11 @@ public class CiosContentServiceImpl implements CiosContentService {
                 Cell valueCell = dataRow.getCell(colIndex);
 
                 if (headerCell != null && headerCell.getCellType() != CellType.BLANK) {
-                    String excelHeader =
-                            formatter.formatCellValue(headerCell).replaceAll("[\\n*]", "").trim();
+                    String excelHeader = formatter.formatCellValue(headerCell).replaceAll("[\\n*]", "").trim();
                     String cellValue = "";
 
                     if (valueCell != null && valueCell.getCellType() != CellType.BLANK) {
-                        if (valueCell.getCellType() == CellType.NUMERIC
-                                && DateUtil.isCellDateFormatted(valueCell)) {
+                        if (valueCell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(valueCell)) {
                             // Handle date format
                             Date date = valueCell.getDateCellValue();
                             SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
@@ -376,7 +377,7 @@ public class CiosContentServiceImpl implements CiosContentService {
         return dataRows;
     }
 
-    public String createFileInfo(String fileId, String fileName,Timestamp initiatedOn, Timestamp completedOn,String status){
+    public String createFileInfo(String fileId, String fileName, Timestamp initiatedOn, Timestamp completedOn, String status) {
         log.info("CiosContentService:: createFileInfo: creating file information");
         FileInfoEntity fileInfoEntity = new FileInfoEntity();
         if (fileId == null) {
@@ -390,7 +391,7 @@ public class CiosContentServiceImpl implements CiosContentService {
         fileInfoEntity.setCompletedOn(completedOn);
         fileInfoEntity.setStatus(status);
         fileInfoRepository.save(fileInfoEntity);
-        log.info("created successfully fileInfo{}",fileId);
+        log.info("created successfully fileInfo{}", fileId);
         return fileId;
     }
 
@@ -399,7 +400,7 @@ public class CiosContentServiceImpl implements CiosContentService {
         log.info("CiosContentService:: getAllFileInfos: fetching all information about file");
         try {
             return fileInfoRepository.findAll();
-        }catch (DataAccessException dae) {
+        } catch (DataAccessException dae) {
             log.error("Database access error while fetching info", dae.getMessage());
             throw new CiosContentException(CiosConstants.ERROR, "Database access error: " + dae.getMessage());
         } catch (Exception e) {
