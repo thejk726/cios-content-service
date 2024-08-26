@@ -27,4 +27,6 @@ public class FileInfoEntity {
     private Timestamp completedOn;
 
     private String status;
+
+    private String partnerId;
 }
