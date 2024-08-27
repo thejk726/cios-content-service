@@ -15,7 +15,7 @@ import java.util.Optional;
 
 @Service
 public interface CiosContentService {
-    void loadContentFromExcel(MultipartFile file, String name) throws IOException;
+    void loadContentFromExcel(MultipartFile file, String partnerName) throws IOException;
 
     PaginatedResponse<Object> fetchAllContentFromDb(RequestDto dto);
 
