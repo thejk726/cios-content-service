@@ -51,9 +51,13 @@ public class CiosContentController {
         }
     }
 
-    @GetMapping("/v1/file/info")
-    public ResponseEntity<List<FileInfoEntity>> getAllFileInfos() {
-        List<FileInfoEntity> fileInfos = ciosContentService.getAllFileInfos();
+    @GetMapping("/v1/file/info/{partnerId}")
+    public ResponseEntity<List<FileInfoEntity>> getAllFileInfosByPartnerId(@PathVariable String partnerId) {
+        List<FileInfoEntity> fileInfos = ciosContentService.getAllFileInfos(partnerId);
+        if (fileInfos.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
         return ResponseEntity.ok(fileInfos);
     }
+
 }
