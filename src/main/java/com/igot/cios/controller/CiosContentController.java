@@ -19,10 +19,10 @@ public class CiosContentController {
     @Autowired
     CiosContentService ciosContentService;
 
-    @PostMapping(value = "/v1/loadContentFromExcel", consumes = "multipart/form-data")
+    @PostMapping(value = "/v1/loadContentFromExcel/{partnerName}", consumes = "multipart/form-data")
     public ResponseEntity<String> loadContentFromExcel(
             @RequestParam(value = "file") MultipartFile file,
-            @RequestHeader(value = "partnerName") String partnerName) {
+            @PathVariable("partnerName") String partnerName) {
         try {
             ciosContentService.loadContentFromExcel(file, partnerName);
             return ResponseEntity.ok("Loading of content from excel is successful.");
