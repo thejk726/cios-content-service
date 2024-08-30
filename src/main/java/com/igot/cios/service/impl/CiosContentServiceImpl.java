@@ -136,7 +136,7 @@ public class CiosContentServiceImpl implements CiosContentService {
         }
     }
 
-    private JsonNode transformData(Object sourceObject, String destinationPath) {
+    public JsonNode transformData(Object sourceObject, String destinationPath) {
         log.info("CiosContentServiceImpl::transformData");
         String inputJson;
         try {
