@@ -89,20 +89,25 @@ public class CourseSchedulerService {
 
     private JsonNode callExtApi(String extCourseId) {
         log.info("KafkaConsumer :: callExtApi");
-        String url = cbServerProperties.getBaseUrl() + cbServerProperties.getFixedUrl() + extCourseId;
-        HttpHeaders headers = new HttpHeaders();
-        HttpEntity<String> entity = new HttpEntity<>(headers);
-        ResponseEntity<Object> response = restTemplate.exchange(
-                url,
-                HttpMethod.GET,
-                entity,
-                Object.class
-        );
-        if (response.getStatusCode().is2xxSuccessful()) {
-            JsonNode jsonNode = objectMapper.valueToTree(response.getBody());
-            return jsonNode;
-        } else {
-            throw new RuntimeException("Failed to retrieve externalId. Status code: " + response.getStatusCodeValue());
+        try {
+            String url = cbServerProperties.getBaseUrl() + cbServerProperties.getFixedUrl() + extCourseId;
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            HttpEntity<String> entity = new HttpEntity<>(headers);
+            ResponseEntity<Object> response = restTemplate.exchange(
+                    url,
+                    HttpMethod.GET,
+                    entity,
+                    Object.class
+            );
+            if (response.getStatusCode().is2xxSuccessful()) {
+                JsonNode jsonNode = objectMapper.valueToTree(response.getBody());
+                return jsonNode;
+            } else {
+                throw new CiosContentException(Constants.ERROR,"Failed to retrieve externalId. Status code: " + response.getStatusCodeValue());
+            }
+        }catch (Exception e){
+            throw new CiosContentException(Constants.ERROR,e.getMessage(),HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
     }
@@ -134,11 +139,12 @@ public class CourseSchedulerService {
         LocalDate today = LocalDate.now();
         LocalDate startDate = today.minusDays(cbServerProperties.getCornellDateRange()); // Adjust the range as needed
         String completionRange = startDate.format(FORMATTER) + ":" + today.format(FORMATTER);
+        log.info("Completion Range {}",completionRange);
         Map<String, String> urlMap = new HashMap<>();
         urlMap.put("offset", "0");
         urlMap.put("limit", cbServerProperties.getCornellEnrollmentListLimit());
         urlMap.put("course_type", cbServerProperties.getCornellEnrollmentListCourseType());
-        urlMap.put("completion_range", "20240801:20240823");
+        urlMap.put("completion_range", completionRange);
         return urlMap;
     }
 
