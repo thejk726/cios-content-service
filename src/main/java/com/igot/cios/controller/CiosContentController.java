@@ -43,7 +43,7 @@ public class CiosContentController {
     }
 
     @PostMapping(value = "/v1/loadContentProgressFromExcel", consumes = "multipart/form-data")
-    public ResponseEntity<String> loadContentProgressFromExcel(@RequestParam(value = "file") MultipartFile file, @RequestParam(value = "partnerName") String providerName) {
+    public ResponseEntity<Object> loadContentProgressFromExcel(@RequestParam(value = "file") MultipartFile file, @RequestParam(value = "partnerName") String providerName) {
         try {
             ciosContentService.loadContentProgressFromExcel(file, providerName);
             return ResponseEntity.status(HttpStatus.OK).body(new HashMap<>());
