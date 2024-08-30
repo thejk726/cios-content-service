@@ -9,7 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-
+import java.util.HashMap;
 import java.util.List;
 
 @RestController
@@ -46,7 +46,7 @@ public class CiosContentController {
     public ResponseEntity<String> loadContentProgressFromExcel(@RequestParam(value = "file") MultipartFile file, @RequestParam(value = "partnerName") String providerName) {
         try {
             ciosContentService.loadContentProgressFromExcel(file, providerName);
-            return ResponseEntity.ok("Loading of content from excel is successful.");
+            return ResponseEntity.status(HttpStatus.OK).body(new HashMap<>());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body("Error during loading of content from excel: " + e.getMessage());
