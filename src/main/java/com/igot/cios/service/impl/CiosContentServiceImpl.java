@@ -1,225 +1,257 @@
 package com.igot.cios.service.impl;
 
-import com.bazaarvoice.jolt.Chainr;
-import com.bazaarvoice.jolt.JsonUtils;
-import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.igot.cios.constant.CiosConstants;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.igot.cios.plugins.ContentSource;
+import com.igot.cios.dto.DeleteContentRequestDto;
+import com.igot.cios.dto.PaginatedResponse;
+import com.igot.cios.dto.RequestDto;
 import com.igot.cios.entity.CornellContentEntity;
+import com.igot.cios.entity.FileInfoEntity;
+import com.igot.cios.entity.UpgradContentEntity;
 import com.igot.cios.exception.CiosContentException;
 import com.igot.cios.kafka.KafkaProducer;
-import com.igot.cios.repository.CornellContentRepository;
+import com.igot.cios.plugins.ContentPartnerPluginService;
+import com.igot.cios.plugins.DataTransformUtility;
+import com.igot.cios.plugins.config.ContentPartnerServiceFactory;
+import com.igot.cios.repository.FileInfoRepository;
 import com.igot.cios.service.CiosContentService;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
-import com.networknt.schema.ValidationMessage;
+import com.igot.cios.util.Constants;
+import com.igot.cios.util.PayloadValidation;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.poi.ss.usermodel.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
+import org.springframework.data.domain.Page;
+import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
-import java.io.IOException;
-import java.io.InputStream;
+
 import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
 import java.util.*;
 
 
 @Service
 @Slf4j
 public class CiosContentServiceImpl implements CiosContentService {
-    @Autowired
-    private CornellContentRepository contentRepository;
+
     @Autowired
     ObjectMapper objectMapper;
     @Autowired
     KafkaProducer kafkaProducer;
-    @Value("${transformation.source-to-target.spec.path}")
-    private String pathOfTragetFile;
+    @Autowired
+    PayloadValidation payloadValidation;
+    @Autowired
+    DataTransformUtility dataTransformUtility;
     @Value("${spring.kafka.cornell.topic.name}")
     private String topic;
-    @Value("${cornell.progress.transformation.source-to-target.spec.path}")
-    private String progressPathOfTragetFile;
+    @Autowired
+    private ContentPartnerServiceFactory contentPartnerServiceFactory;
+    @Autowired
+    private FileInfoRepository fileInfoRepository;
 
     @Override
-    public void loadContentFromExcel(MultipartFile file) {
+    public void loadContentFromExcel(MultipartFile file, String orgId) {
         log.info("CiosContentServiceImpl::loadJobsFromExcel");
-        List<Map<String, String>> processedData = processExcelFile(file);
-        log.info("No.of processedData from excel: " + processedData.size());
-        JsonNode jsonData = objectMapper.valueToTree(processedData);
-        jsonData.forEach(
-                eachContentData -> {
-                    saveOrUpdateContentFromProvider(eachContentData);
-                });
-    }
-
-    @Override
-    public List<CornellContentEntity> fetchAllContentFromDb() {
-        log.info("CiosContentServiceImpl::fetchAllContentFromDb");
+        String fileName = file.getOriginalFilename();
+        Timestamp initiatedOn = new Timestamp(System.currentTimeMillis());
+        String fileId = dataTransformUtility.createFileInfo(null, null, fileName, initiatedOn, null, null);
         try {
-            return contentRepository.findAll();
-        } catch (DataAccessException dae) {
-            log.error("Database access error while fetching content", dae.getMessage());
-            throw new CiosContentException(CiosConstants.ERROR, "Database access error: " + dae.getMessage());
-        } catch (Exception e) {
-            throw new CiosContentException(CiosConstants.ERROR, e.getMessage());
-        }
-    }
-
-    @Override
-    public void loadContentProgressFromExcel(MultipartFile file) {
-        List<Map<String, String>> processedData = processExcelFile(file);
-        log.info("No.of processedData from excel: " + processedData.size());
-        JsonNode jsonData = objectMapper.valueToTree(processedData);
-        jsonData.forEach(
-                eachContentData -> {
-                    callCornellEnrollmentAPI(eachContentData);
-                });
-    }
-
-    private void saveOrUpdateContentFromProvider(JsonNode rawContentData) {
-        log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
-        JsonNode transformData = transformData(rawContentData, pathOfTragetFile);
-        validatePayload(CiosConstants.CORNELL_DATA_PAYLOAD_VALIDATION_FILE, transformData);
-        String externalId = transformData.path("content").path("externalId").asText();
-        Optional<CornellContentEntity> optExternalContent = contentRepository.findByExternalId(externalId);
-        Timestamp currentTime = new Timestamp(System.currentTimeMillis());
-        if (optExternalContent.isPresent()) {
-            CornellContentEntity externalContent = optExternalContent.get();
-            externalContent.setExternalId(externalId);
-            externalContent.setCiosData(transformData);
-            externalContent.setIsActive(externalContent.getIsActive());
-            externalContent.setCreatedDate(externalContent.getCreatedDate());
-            externalContent.setUpdatedDate(currentTime);
-            externalContent.setSourceData(rawContentData);
-            contentRepository.save(externalContent);
-        } else {
-            CornellContentEntity externalContent = new CornellContentEntity();
-            externalContent.setExternalId(externalId);
-            externalContent.setCiosData(transformData);
-            externalContent.setIsActive(false);
-            externalContent.setCreatedDate(currentTime);
-            externalContent.setUpdatedDate(currentTime);
-            externalContent.setSourceData(rawContentData);
-            contentRepository.save(externalContent);
-        }
-    }
-
-    private void callCornellEnrollmentAPI(JsonNode rawContentData) {
-        log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
-        JsonNode transformData = transformData(rawContentData, progressPathOfTragetFile);
-        validatePayload(CiosConstants.CORNELL_PROGRESS_DATA_VALIDATION_FILE, transformData);
-        kafkaProducer.push(topic,transformData);
-        log.info("callCornellEnrollmentAPI {} ",transformData.asText());
-    }
-
-    public void validatePayload(String fileName, JsonNode payload) {
-        log.info("CiosContentServiceImpl::validatePayload");
-        try {
-            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
-            InputStream schemaStream = schemaFactory.getClass().getResourceAsStream(fileName);
-            JsonSchema schema = schemaFactory.getSchema(schemaStream);
-
-            Set<ValidationMessage> validationMessages = schema.validate(payload);
-            if (!validationMessages.isEmpty()) {
-                StringBuilder errorMessage = new StringBuilder("Validation error(s): \n");
-                for (ValidationMessage message : validationMessages) {
-                    errorMessage.append(message.getMessage()).append("\n");
-                }
-                throw new CiosContentException(CiosConstants.ERROR, errorMessage.toString());
+            ContentSource contentSource = ContentSource.fromOrgId(orgId);
+            if (contentSource == null) {
+                log.warn("Unknown provider name: " + orgId);
+                return;
             }
+            List<Map<String, String>> processedData = dataTransformUtility.processExcelFile(file);
+            log.info("No.of processedData from excel: " + processedData.size());
+            JsonNode jsonData = objectMapper.valueToTree(processedData);
+
+            JsonNode entity = dataTransformUtility.fetchPartnerInfoUsingApi(orgId);
+            List<Object> contentJson = objectMapper.convertValue(entity.path("result").path("trasformContentJson"), new TypeReference<List<Object>>() {
+            });
+            if (contentJson == null || contentJson.isEmpty()) {
+                throw new CiosContentException("Transformation data not present in content partner db", HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+            ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(contentSource);
+            service.loadContentFromExcel(jsonData, orgId, fileName, fileId, contentJson);
+            Timestamp completedOn = new Timestamp(System.currentTimeMillis());
+            dataTransformUtility.createFileInfo(entity.path("result").get("id").asText(), fileId, fileName, initiatedOn, completedOn, Constants.CONTENT_UPLOAD_SUCCESSFULLY);
         } catch (Exception e) {
-            throw new CiosContentException(CiosConstants.ERROR, "Failed to validate payload: " + e.getMessage());
+            ContentSource contentSource = ContentSource.fromOrgId(orgId);
+            if (contentSource == null) {
+                log.warn("Unknown provider name: " + orgId);
+                return;
+            }
+            JsonNode entity = dataTransformUtility.fetchPartnerInfoUsingApi(orgId);
+            dataTransformUtility.createFileInfo(entity.get("id").asText(), fileId, fileName, initiatedOn, new Timestamp(System.currentTimeMillis()), Constants.CONTENT_UPLOAD_FAILED);
+            throw new RuntimeException(e.getMessage());
         }
     }
 
-    private JsonNode transformData(Object sourceObject, String destinationPath) {
-        log.info("CiosContentServiceImpl::transformData");
-        String inputJson;
-        try {
-            inputJson = objectMapper.writeValueAsString(sourceObject);
-        } catch (JsonProcessingException e) {
+    @Override
+    public PaginatedResponse<?> fetchAllContentFromSecondaryDb(RequestDto dto) {
+        log.info("CiosContentServiceImpl::fetchAllCornellContentFromDb");
+        ContentSource contentSource = ContentSource.fromOrgId(dto.getOrgId());
+        if (contentSource == null) {
+            log.warn("Unknown provider name: " + dto.getOrgId());
             return null;
         }
-        List<Object> specJson = JsonUtils.classpathToList(destinationPath);
-        Chainr chainr = Chainr.fromSpec(specJson);
-        Object transformedOutput = chainr.transform(JsonUtils.jsonToObject(inputJson));
-        return objectMapper.convertValue(transformedOutput, JsonNode.class);
-    }
-
-
-    private List<Map<String, String>> processExcelFile(MultipartFile incomingFile) {
-        log.info("CiosContentServiceImpl::processExcelFile");
         try {
-            return validateFileAndProcessRows(incomingFile);
-        } catch (Exception e) {
-            log.error("Error occurred during file processing: {}", e.getMessage());
-            throw new RuntimeException(e.getMessage());
-        }
-    }
-
-    private List<Map<String, String>> validateFileAndProcessRows(MultipartFile file) {
-        log.info("CiosContentServiceImpl::validateFileAndProcessRows");
-        try (InputStream inputStream = file.getInputStream();
-             Workbook workbook = WorkbookFactory.create(inputStream)) {
-            Sheet sheet = workbook.getSheetAt(0);
-            return processSheetAndSendMessage(sheet);
-        } catch (IOException e) {
-            log.error("Error while processing Excel file: {}", e.getMessage());
-            throw new RuntimeException(e.getMessage());
-        }
-    }
-
-    private List<Map<String, String>> processSheetAndSendMessage(Sheet sheet) {
-        log.info("CiosContentServiceImpl::processSheetAndSendMessage");
-        DataFormatter formatter = new DataFormatter();
-        Row headerRow = sheet.getRow(0);
-        List<Map<String, String>> dataRows = new ArrayList<>();
-        for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
-            Row dataRow = sheet.getRow(rowIndex);
-
-            if (dataRow == null) {
-                break; // No more data rows, exit the loop
+            ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(contentSource);
+            Page<?> pageData = service.fetchAllContentFromSecondaryDb(dto);
+            if(pageData!=null) {
+                return new PaginatedResponse<>(
+                        pageData.getContent(),
+                        pageData.getTotalPages(),
+                        pageData.getTotalElements(),
+                        pageData.getNumberOfElements(),
+                        pageData.getSize(),
+                        pageData.getNumber()
+                );
+            }else{
+                return new PaginatedResponse<>(
+                        Collections.emptyList(),
+                        0,
+                        0,
+                        0,
+                        0,
+                        0
+                );
             }
+        } catch (DataAccessException dae) {
+            log.error("Database access error while fetching content", dae.getMessage());
+            throw new CiosContentException(Constants.ERROR, "Database access error: " + dae.getMessage());
+        } catch (Exception e) {
+            throw new CiosContentException(Constants.ERROR, e.getMessage());
+        }
 
-            boolean allBlank = true;
-            Map<String, String> rowData = new HashMap<>();
+    }
 
-            for (int colIndex = 0; colIndex < headerRow.getLastCellNum(); colIndex++) {
-                Cell headerCell = headerRow.getCell(colIndex);
-                Cell valueCell = dataRow.getCell(colIndex);
+    @Override
+    public void loadContentProgressFromExcel(MultipartFile file, String orgId) {
+        try {
+            List<Map<String, String>> processedData = dataTransformUtility.processExcelFile(file);
+            log.info("No.of processedData from excel: " + processedData.size());
+            JsonNode jsonData = objectMapper.valueToTree(processedData);
+            jsonData.forEach(
+                    eachContentData -> {
+                        callEnrollmentAPI(eachContentData, orgId);
+                    });
+        } catch (Exception e) {
+            throw new CiosContentException(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 
-                if (headerCell != null && headerCell.getCellType() != CellType.BLANK) {
-                    String excelHeader =
-                            formatter.formatCellValue(headerCell).replaceAll("[\\n*]", "").trim();
-                    String cellValue = "";
+    private void callEnrollmentAPI(JsonNode rawContentData, String orgId) {
+        try {
+            log.info("CiosContentServiceImpl::saveOrUpdateContentFromProvider");
+            JsonNode entity = dataTransformUtility.fetchPartnerInfoUsingApi(orgId);
+            List<Object> contentJson = objectMapper.convertValue(entity.path("result").path("transformProgressJson"), new TypeReference<List<Object>>() {
+            });
+            JsonNode transformData = dataTransformUtility.transformData(rawContentData, contentJson);
+            payloadValidation.validatePayload(Constants.PROGRESS_DATA_VALIDATION_FILE, transformData);
+            ((ObjectNode)transformData).put("orgId",orgId);
+            kafkaProducer.push(topic, transformData);
+            log.info("callCornellEnrollmentAPI {} ", transformData.asText());
+        } catch (Exception e) {
+            log.error("error while processing", e);
+            throw new CiosContentException(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
 
-                    if (valueCell != null && valueCell.getCellType() != CellType.BLANK) {
-                        if (valueCell.getCellType() == CellType.NUMERIC
-                                && DateUtil.isCellDateFormatted(valueCell)) {
-                            // Handle date format
-                            Date date = valueCell.getDateCellValue();
-                            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'");
-                            cellValue = dateFormat.format(date);
-                        } else {
-                            cellValue = formatter.formatCellValue(valueCell).replace("\n", ",").trim();
-                        }
-                        allBlank = false;
+    @Override
+    public List<FileInfoEntity> getAllFileInfos(String partnerId) {
+        log.info("CiosContentService:: getAllFileInfos: fetching all information about file");
+        try {
+            List<FileInfoEntity> fileInfo = fileInfoRepository.findByPartnerId(partnerId);
+
+            if (fileInfo.isEmpty()) {
+                log.warn("No file information found for partnerId: {}", partnerId);
+            } else {
+                log.info("File information found for partnerId: {}", partnerId);
+            }
+            return fileInfo;
+        } catch (DataAccessException dae) {
+            log.error("Database access error while fetching info", dae.getMessage());
+            throw new CiosContentException(Constants.ERROR, "Database access error: " + dae.getMessage());
+        } catch (Exception e) {
+            throw new CiosContentException(Constants.ERROR, e.getMessage());
+        }
+    }
+
+    @Override
+    public ResponseEntity<?> deleteNotPublishContent(DeleteContentRequestDto deleteContentRequestDto) {
+        log.info("CiosContentServiceImpl:: deleteNotPublishContent: deleting non-published content");
+        String orgId = deleteContentRequestDto.getOrgId();
+        ContentSource contentSource = ContentSource.fromOrgId(orgId);
+        if (contentSource == null) {
+            log.warn("Unknown provider name: " + orgId);
+            return null;
+        }
+        List<String> externalIds = deleteContentRequestDto.getExternalId();
+        ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(contentSource);
+        try {
+            List<?> allContent = service.fetchAllContentByPartnerName();
+            boolean hasValidationErrors = false;
+            StringBuilder validationErrors = new StringBuilder();
+            List<Object> validContentToDelete = new ArrayList<>();
+            for (String externalId : externalIds) {
+                Optional<?> contentEntityOpt = allContent.stream()
+                        .filter(content -> getExternalId(content).equals(externalId))
+                        .findFirst();
+                if (contentEntityOpt.isPresent()) {
+                    Object contentEntity = contentEntityOpt.get();
+                    boolean isActive = getIsActiveStatus(contentEntity);
+                    if (isActive) {
+                        validationErrors.append("External ID: ").append(externalId)
+                                .append(" is live, we can't delete live content.\n");
+                        hasValidationErrors = true;
+                    } else {
+                        validContentToDelete.add(contentEntity);
                     }
-
-                    rowData.put(excelHeader, cellValue);
+                } else {
+                    validationErrors.append("External ID: ").append(externalId)
+                            .append(" does not exist.\n");
+                    hasValidationErrors = true;
                 }
             }
-            if (allBlank) {
-                break; // If all cells are blank in the current row, stop processing
+            if (hasValidationErrors) {
+                log.error("No valid content found for deletion.");
+                validationErrors.append("No valid content found for deletion.");
+                return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(validationErrors.toString());
             }
 
-            dataRows.add(rowData);
+            for (Object content : validContentToDelete) {
+                service.deleteContent(content);
+            }
+            return ResponseEntity.ok("Content deleted successfully.");
+        } catch (DataAccessException dae) {
+            log.error("Database access error while deleting content", dae.getMessage());
+            throw new CiosContentException(Constants.ERROR, "Database access error: " + dae.getMessage());
+        } catch (Exception e) {
+            log.error("Error occurred while deleting content", e.getMessage());
+            throw new CiosContentException(Constants.ERROR, e.getMessage());
         }
-        log.info("Number of Data Rows Processed: " + dataRows.size());
-        return dataRows;
+    }
+
+
+    private String getExternalId(Object contentEntity) {
+        if (contentEntity instanceof CornellContentEntity) {
+            return ((CornellContentEntity) contentEntity).getExternalId();
+        } else if (contentEntity instanceof UpgradContentEntity) {
+            return ((UpgradContentEntity) contentEntity).getExternalId();
+        }
+        return null;
+    }
+
+    private boolean getIsActiveStatus(Object contentEntity) {
+        if (contentEntity instanceof CornellContentEntity) {
+            return ((CornellContentEntity) contentEntity).getIsActive();
+        } else if (contentEntity instanceof UpgradContentEntity) {
+            return ((UpgradContentEntity) contentEntity).getIsActive();
+        }
+        return false;
     }
 }
