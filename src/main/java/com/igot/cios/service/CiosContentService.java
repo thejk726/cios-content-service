@@ -1,17 +1,35 @@
 package com.igot.cios.service;
 
-
-import com.igot.cios.entity.CornellContentEntity;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.igot.cios.dto.DeleteContentRequestDto;
+import com.igot.cios.dto.PaginatedResponse;
+import com.igot.cios.dto.RequestDto;
+import com.igot.cios.entity.FileInfoEntity;
+import com.igot.cios.util.elasticsearch.dto.SearchCriteria;
+import com.igot.cios.util.elasticsearch.dto.SearchResult;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.util.List;
 
+
 @Service
 public interface CiosContentService {
-    void loadContentFromExcel(MultipartFile file) throws IOException;
-    List<CornellContentEntity> fetchAllContentFromDb();
+    void loadContentFromExcel(MultipartFile file, String partnerCode) throws IOException;
 
-    void loadContentProgressFromExcel(MultipartFile file);
+    PaginatedResponse<?> fetchAllContentFromSecondaryDb(RequestDto dto);
+
+    void loadContentProgressFromExcel(MultipartFile file, String orgId);
+
+    List<FileInfoEntity> getAllFileInfos(String partnerId);
+
+    ResponseEntity<?> deleteNotPublishContent(DeleteContentRequestDto deleteContentRequestDto);
+
+    Object readContentByExternalId(String partnercode, String externalid);
+
+    SearchResult searchContent(SearchCriteria searchCriteria);
+
+    Object updateContent(JsonNode jsonNode);
 }

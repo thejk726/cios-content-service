@@ -1,6 +1,5 @@
 package com.igot.cios.entity;
 
-
 import com.fasterxml.jackson.databind.JsonNode;
 import com.vladmihalcea.hibernate.type.json.JsonBinaryType;
 import lombok.AllArgsConstructor;
@@ -17,15 +16,14 @@ import javax.persistence.Table;
 import java.io.Serializable;
 import java.sql.Timestamp;
 
-
 @Getter
 @Setter
 @AllArgsConstructor
 @NoArgsConstructor
 @Entity
-@Table(name = "cornell_content_entity")
+@Table(name = "upgrad_content_entity")
 @TypeDef(name = "jsonb", typeClass = JsonBinaryType.class)
-public class CornellContentEntity implements Serializable {
+public class UpgradContentEntity implements Serializable {
     @Id
     private String externalId;
     @Type(type = "jsonb")
@@ -37,5 +35,6 @@ public class CornellContentEntity implements Serializable {
     @Type(type = "jsonb")
     @Column(columnDefinition = "jsonb")
     private JsonNode sourceData;
+    private String publishedOn;
     private String fileId;
 }

@@ -1,0 +1,14 @@
+[
+  {
+    "operation": "shift",
+    "spec": {
+      "Program Code": "content.externalId",
+      "Program Title": "content.name",
+      "short description": "content.objectives",
+      "Duration": "content.duration",
+      "long description": "content.description",
+      "imageUrl": "content.appIcon",
+      "redirectUrl": "content.redirectUrl"
+    }
+  }
+]
