@@ -71,7 +71,7 @@ public class UpgradPluginServiceImpl implements ContentPartnerPluginService {
             ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.UPDATED_DATE, currentTime.toString()).asText();
             ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.ACTIVE, Constants.ACTIVE_STATUS).asText();
             ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PUBLISHED_ON, "0000-00-00 00:00:00").asText();
-            //dataTransformUtility.validatePayload(Constants.DATA_PAYLOAD_VALIDATION_FILE, transformData);
+            dataTransformUtility.validatePayload(Constants.DATA_PAYLOAD_VALIDATION_FILE, transformData);
             addSearchTags(transformData);
             String externalId = transformData.path(Constants.CONTENT).path(Constants.EXTERNAL_ID).asText();
             UpgradContentEntity upgradContentEntity = saveOrUpdateCornellContent(externalId, transformData, eachContentData, currentTime, fileId);
@@ -117,28 +117,23 @@ public class UpgradPluginServiceImpl implements ContentPartnerPluginService {
 
     private void cornellBulkSave(List<UpgradContentEntity> upgradContentEntityList, String partnerCode) {
         repository.saveAll(upgradContentEntityList);
-        BulkRequest bulkRequest = new BulkRequest();
         upgradContentEntityList.forEach(contentEntity -> {
             try {
                 Map<String, Object> entityMap = objectMapper.convertValue(contentEntity, Map.class);
                 flattenContentData(entityMap);
                 String uniqueId = partnerCode + "_" + contentEntity.getExternalId();
-
-                IndexRequest indexRequest = new IndexRequest(Constants.CIOS_CONTENT_INDEX_NAME)
-                        .id(uniqueId)
-                        .source(entityMap);
-
-                bulkRequest.add(indexRequest);
-                log.info("Preparing to add document for externalId: {}", contentEntity.getExternalId());
+                esUtilService.addDocument(
+                        Constants.CIOS_CONTENT_INDEX_NAME,
+                        Constants.INDEX_TYPE,
+                        uniqueId,
+                        entityMap,
+                        cbServerProperties.getElasticCiosContentJsonPath()
+                );
+                log.info("Added data to ES document for externalId: {}", contentEntity.getExternalId());
             } catch (Exception e) {
                 log.error("Error while processing contentEntity with externalId: {}", contentEntity.getExternalId(), e);
             }
         });
-        try {
-            client.bulk(bulkRequest, RequestOptions.DEFAULT);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
         Long totalCourseCount = repository.count();
         JsonNode response = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
         JsonNode resultData = response.path(Constants.RESULT);
@@ -154,6 +149,7 @@ public class UpgradPluginServiceImpl implements ContentPartnerPluginService {
                 Map<String, Object> contentMap = (Map<String, Object>) ciosDataMap.get(Constants.CONTENT);
                 entityMap.putAll(contentMap);
                 entityMap.remove(Constants.CIOS_DATA);
+                entityMap.remove(Constants.SOURCE_DATA);
             }
         }
     }

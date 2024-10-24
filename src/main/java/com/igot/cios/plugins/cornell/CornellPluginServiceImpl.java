@@ -63,17 +63,17 @@ public class CornellPluginServiceImpl implements ContentPartnerPluginService {
         processedData.forEach(eachContentData -> {
             JsonNode transformData = dataTransformUtility.transformData(eachContentData, contentJson);
             Timestamp currentTime = new Timestamp(System.currentTimeMillis());
-            ((ObjectNode) transformData.path("content")).put("fileId", fileId).asText();
-            ((ObjectNode) transformData.path("content")).put("source", fileName).asText();
-            ((ObjectNode) transformData.path("content")).put("partnerCode", partnerCode).asText();
-            ((ObjectNode) transformData.path("content")).put(Constants.STATUS, Constants.NOT_INITIATED).asText();
-            ((ObjectNode) transformData.path("content")).put(Constants.CREATED_DATE, currentTime.toString()).asText();
-            ((ObjectNode) transformData.path("content")).put(Constants.UPDATED_DATE, currentTime.toString()).asText();
-            ((ObjectNode) transformData.path("content")).put(Constants.ACTIVE, Constants.ACTIVE_STATUS).asText();
-            ((ObjectNode) transformData.path("content")).put(Constants.PUBLISHED_ON, "0000-00-00 00:00:00").asText();
-            //dataTransformUtility.validatePayload(Constants.DATA_PAYLOAD_VALIDATION_FILE, transformData);
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.FILE_ID, fileId).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.SOURCE, fileName).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PARTNER_CODE, partnerCode).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.STATUS, Constants.NOT_INITIATED).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.CREATED_DATE, currentTime.toString()).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.UPDATED_DATE, currentTime.toString()).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.ACTIVE, Constants.ACTIVE_STATUS).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PUBLISHED_ON, "0000-00-00 00:00:00").asText();
+            dataTransformUtility.validatePayload(Constants.DATA_PAYLOAD_VALIDATION_FILE, transformData);
             addSearchTags(transformData);
-            String externalId = transformData.path("content").path("externalId").asText();
+            String externalId = transformData.path(Constants.CONTENT).path(Constants.EXTERNAL_ID).asText();
             CornellContentEntity cornellContentEntity = saveOrUpdateCornellContent(externalId, transformData, eachContentData, currentTime, fileId);
             cornellContentEntityList.add(cornellContentEntity);
 
@@ -83,9 +83,9 @@ public class CornellPluginServiceImpl implements ContentPartnerPluginService {
 
     private JsonNode addSearchTags(JsonNode transformData) {
         List<String> searchTags = new ArrayList<>();
-        searchTags.add(transformData.path("content").get("name").textValue().toLowerCase());
+        searchTags.add(transformData.path(Constants.CONTENT).get(Constants.NAME).textValue().toLowerCase());
         ArrayNode searchTagsArray = objectMapper.valueToTree(searchTags);
-        ((ObjectNode) transformData.path("content")).put(Constants.CONTENT_SEARCH_TAGS, searchTagsArray);
+        ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.CONTENT_SEARCH_TAGS, searchTagsArray);
         return transformData;
     }
 
@@ -117,28 +117,23 @@ public class CornellPluginServiceImpl implements ContentPartnerPluginService {
 
     private void cornellBulkSave(List<CornellContentEntity> cornellContentEntityList, String partnerCode) {
         cornellContentRepository.saveAll(cornellContentEntityList);
-        BulkRequest bulkRequest = new BulkRequest();
         cornellContentEntityList.forEach(contentEntity -> {
             try {
                 Map<String, Object> entityMap = objectMapper.convertValue(contentEntity, Map.class);
                 flattenContentData(entityMap);
                 String uniqueId = partnerCode + "_" + contentEntity.getExternalId();
-
-                IndexRequest indexRequest = new IndexRequest(Constants.CIOS_CONTENT_INDEX_NAME)
-                        .id(uniqueId)
-                        .source(entityMap);
-
-                bulkRequest.add(indexRequest);
-                log.info("Preparing to add document for externalId: {}", contentEntity.getExternalId());
+                esUtilService.addDocument(
+                        Constants.CIOS_CONTENT_INDEX_NAME,
+                        Constants.INDEX_TYPE,
+                        uniqueId,
+                        entityMap,
+                        cbServerProperties.getElasticCiosContentJsonPath()
+                );
+                log.info("Added data to ES document for externalId: {}", contentEntity.getExternalId());
             } catch (Exception e) {
                 log.error("Error while processing contentEntity with externalId: {}", contentEntity.getExternalId(), e);
             }
         });
-        try {
-            client.bulk(bulkRequest, RequestOptions.DEFAULT);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
         Long totalCourseCount = cornellContentRepository.count();
         JsonNode response = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
         JsonNode resultData = response.path(Constants.RESULT);
@@ -153,7 +148,8 @@ public class CornellPluginServiceImpl implements ContentPartnerPluginService {
             if (ciosDataMap.containsKey("content") && ciosDataMap.get("content") instanceof Map) {
                 Map<String, Object> contentMap = (Map<String, Object>) ciosDataMap.get("content");
                 entityMap.putAll(contentMap);
-                entityMap.remove("ciosData");
+                entityMap.remove(Constants.CIOS_DATA);
+                entityMap.remove(Constants.SOURCE_DATA);
             }
         }
     }
