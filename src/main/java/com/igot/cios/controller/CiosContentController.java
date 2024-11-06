@@ -26,12 +26,13 @@ public class CiosContentController {
     @Autowired
     CiosContentService ciosContentService;
 
-    @PostMapping(value = "/v1/loadContentFromExcel/{partnercode}", consumes = "multipart/form-data")
+    @PostMapping(value = "/v1/loadContentFromExcel/{partnercode}/{partnerId}", consumes = "multipart/form-data")
     public ResponseEntity<Object> loadContentFromExcel(
             @RequestParam(value = "file") MultipartFile file,
-            @PathVariable("partnercode") String partnerCode) {
+            @PathVariable("partnercode") String partnerCode,
+            @PathVariable("partnerId") String partnerId){
         try {
-            ciosContentService.loadContentFromExcel(file, partnerCode);
+            ciosContentService.loadContentFromExcel(file, partnerCode, partnerId);
             return ResponseEntity.status(HttpStatus.OK).body(new HashMap<>());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

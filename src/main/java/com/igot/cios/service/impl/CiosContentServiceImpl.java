@@ -72,7 +72,7 @@ public class CiosContentServiceImpl implements CiosContentService {
     private CbServerProperties cbServerProperties;
 
     @Override
-    public void loadContentFromExcel(MultipartFile file, String partnerCode) {
+    public void loadContentFromExcel(MultipartFile file, String partnerCode, String partnerId) {
         log.info("CiosContentServiceImpl::loadContentFromExcel");
         ContentSource contentSource = ContentSource.fromPartnerCode(partnerCode);
         if (contentSource == null) {
@@ -81,7 +81,7 @@ public class CiosContentServiceImpl implements CiosContentService {
         }
         String fileName = file.getOriginalFilename();
         Timestamp initiatedOn = new Timestamp(System.currentTimeMillis());
-        String fileId = dataTransformUtility.createFileInfo(null, null, fileName, initiatedOn, null, null, null);
+        String fileId = dataTransformUtility.createFileInfo(partnerId, null, fileName, initiatedOn, null, Constants.CONTENT_UPLOAD_IN_PROGRESS , null);
         try {
             List<Map<String, String>> processedData = dataTransformUtility.processExcelFile(file);
             log.info("No.of processedData from excel: " + processedData.size());
@@ -99,8 +99,7 @@ public class CiosContentServiceImpl implements CiosContentService {
                 log.info("Batch of size {} sent to Kafka", batch.size());
             }
         } catch (Exception e) {
-            JsonNode entity = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
-            dataTransformUtility.createFileInfo(entity.path(Constants.RESULT).get(Constants.ID).asText(), fileId, fileName, initiatedOn, new Timestamp(System.currentTimeMillis()), Constants.CONTENT_UPLOAD_FAILED, null);
+            dataTransformUtility.createFileInfo(partnerId, fileId, fileName, initiatedOn, new Timestamp(System.currentTimeMillis()), Constants.CONTENT_UPLOAD_FAILED, null);
             throw new RuntimeException(e.getMessage());
         }
     }
