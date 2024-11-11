@@ -42,6 +42,8 @@ public class OnboardContentConsumer {
         String fileName = null;
         Timestamp initiatedOn = null;
         String fileId = null;
+        String loadContentErrorMessage = null;
+
         try {
             log.info("Consuming the content to onboard in cios");
             Map<String, Object> receivedMessage = objectMapper.readValue(message, new TypeReference<Map<String, Object>>() {});
@@ -54,7 +56,14 @@ public class OnboardContentConsumer {
 
             log.info("Received {} records from Kafka", receivedMessage.size());
             List<Map<String, String>> processedData = objectMapper.convertValue(receivedMessage.get("data"), new TypeReference<List<Map<String, String>>>() {});
-            processReceivedData(partnerCode, processedData, fileName, fileId, initiatedOn);
+            try {
+                processReceivedData(partnerCode, processedData, fileName, fileId, initiatedOn);
+            }catch (Exception e){
+                loadContentErrorMessage = "Error in processReceivedData: " + e.getMessage();
+                log.error(loadContentErrorMessage);
+            }
+            ciosContentServiceimpl.processRowsAndCreateLogs(processedData, partnerId, fileId, fileName, initiatedOn,partnerCode, loadContentErrorMessage);
+            log.info("Data successfully processed for partner: {}", partnerCode);
         } catch (Exception e) {
             dataTransformUtility.createFileInfo(partnerId, fileId, fileName, initiatedOn, new Timestamp(System.currentTimeMillis()), Constants.CONTENT_UPLOAD_FAILED, null);
             log.error("Error while consuming message from Kafka", e);
@@ -63,19 +72,17 @@ public class OnboardContentConsumer {
 
 
     private void processReceivedData(String partnerCode, List<Map<String, String>> processedData, String fileName, String fileId, Timestamp initiatedOn) throws IOException {
-            log.info("Processing {} records for partner code {}", processedData.size(), partnerCode);
-            JsonNode jsonData = objectMapper.valueToTree(processedData);
+        log.info("Processing {} records for partner code {}", processedData.size(), partnerCode);
+        JsonNode jsonData = objectMapper.valueToTree(processedData);
 
-            JsonNode entity = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
-            List<Object> contentJson = objectMapper.convertValue(entity.path("result").path("trasformContentJson"), new TypeReference<List<Object>>() {
-            });
-            if (contentJson == null || contentJson.isEmpty()) {
-                throw new CiosContentException("Transformation data not present in content partner db", HttpStatus.INTERNAL_SERVER_ERROR);
-            }
-            ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(ContentSource.fromPartnerCode(partnerCode));
-            service.loadContentFromExcel(jsonData, partnerCode, fileName, fileId, contentJson);
-            ciosContentServiceimpl.processRowsAndCreateLogs(processedData, entity, fileId, fileName, initiatedOn,partnerCode);
-            log.info("Data successfully processed for partner: {}", partnerCode);
+        JsonNode entity = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
+        List<Object> contentJson = objectMapper.convertValue(entity.path("result").path("trasformContentJson"), new TypeReference<List<Object>>() {
+        });
+        if (contentJson == null || contentJson.isEmpty()) {
+            throw new CiosContentException("Transformation data not present in content partner db", HttpStatus.INTERNAL_SERVER_ERROR);
         }
+        ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(ContentSource.fromPartnerCode(partnerCode));
+        service.loadContentFromExcel(jsonData, partnerCode, fileName, fileId, contentJson);
+    }
 
 }
