@@ -386,10 +386,11 @@ public class DataTransformUtility {
             ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.UPDATED_DATE, currentTime.toString()).asText();
             ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.ACTIVE, Constants.ACTIVE_STATUS).asText();
             ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PUBLISHED_ON, "0000-00-00 00:00:00").asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PARTNER_ID, partnerId).asText();
             validatePayload(Constants.DATA_PAYLOAD_VALIDATION_FILE, transformData);
             addSearchTags(transformData);
             String externalId = transformData.path(Constants.CONTENT).path(Constants.EXTERNAL_ID).asText();
-            CornellContentEntity cornellContentEntity = saveOrUpdateCornellContent(externalId, transformData, eachContentData, currentTime, fileId);
+            CornellContentEntity cornellContentEntity = saveOrUpdateCornellContent(externalId, transformData, eachContentData, currentTime, fileId,partnerId,partnerCode);
             cornellContentEntityList.add(cornellContentEntity);
 
         });
@@ -404,7 +405,7 @@ public class DataTransformUtility {
         return transformData;
     }
 
-    public CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime, String fileId) {
+    public CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime, String fileId,String partnerId,String partnerCode) {
         Optional<CornellContentEntity> optExternalContent = cornellContentRepository.findByExternalId(externalId);
         if (optExternalContent.isPresent()) {
             CornellContentEntity externalContent = optExternalContent.get();
@@ -415,6 +416,8 @@ public class DataTransformUtility {
             externalContent.setUpdatedDate(currentTime);
             externalContent.setSourceData(rawContentData);
             externalContent.setFileId(fileId);
+            externalContent.setPartnerId(partnerId);
+            externalContent.setPartnerCode((partnerCode));
             return externalContent;
         } else {
             CornellContentEntity externalContent = new CornellContentEntity();
@@ -425,6 +428,9 @@ public class DataTransformUtility {
             externalContent.setUpdatedDate(currentTime);
             externalContent.setSourceData(rawContentData);
             externalContent.setFileId(fileId);
+            externalContent.setPartnerId(fileId);
+            externalContent.setPartnerId(partnerId);
+            externalContent.setPartnerCode((partnerCode));
             return externalContent;
         }
 

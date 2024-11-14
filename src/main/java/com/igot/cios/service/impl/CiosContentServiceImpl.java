@@ -265,13 +265,14 @@ public class CiosContentServiceImpl implements CiosContentService {
     public Object updateContent(JsonNode jsonNode) {
         log.info("CiosContentServiceImpl::updateContent");
         String partnerCode = jsonNode.path("content").get("contentPartner").get("partnerCode").asText();
+        String partnerId = jsonNode.path("content").get("contentPartner").get("id").asText();
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
         String externalId = jsonNode.path("content").get("externalId").asText();
         boolean isActive = jsonNode.path("content").get("isActive").asBoolean(false);
-        return saveOrUpdateCornellContent(externalId,jsonNode,currentTime,isActive,partnerCode);
+        return saveOrUpdateCornellContent(externalId,jsonNode,currentTime,isActive,partnerCode,partnerId);
     }
 
-    private CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, Timestamp currentTime, boolean isActive, String partnerCode) {
+    private CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, Timestamp currentTime, boolean isActive, String partnerCode,String partnerId) {
         ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PARTNER_CODE, partnerCode).asText();
         addSearchTags(transformData);
         CornellContentEntity externalContent;
@@ -283,6 +284,8 @@ public class CiosContentServiceImpl implements CiosContentService {
             externalContent.setIsActive(isActive);
             externalContent.setCreatedDate(externalContent.getCreatedDate());
             externalContent.setUpdatedDate(currentTime);
+            externalContent.setPartnerCode(partnerCode);
+            externalContent.setPartnerId(partnerId);
         } else {
             externalContent = new CornellContentEntity();
             externalContent.setExternalId(externalId);
@@ -290,6 +293,8 @@ public class CiosContentServiceImpl implements CiosContentService {
             externalContent.setIsActive(isActive);
             externalContent.setCreatedDate(currentTime);
             externalContent.setUpdatedDate(currentTime);
+            externalContent.setPartnerCode(partnerCode);
+            externalContent.setPartnerId(partnerId);
         }
         repository.save(externalContent);
         Map<String, Object> entityMap = objectMapper.convertValue(externalContent, Map.class);
