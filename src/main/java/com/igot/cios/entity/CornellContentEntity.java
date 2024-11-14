@@ -38,4 +38,6 @@ public class CornellContentEntity implements Serializable {
     @Column(columnDefinition = "jsonb")
     private JsonNode sourceData;
     private String fileId;
+    private String partnerId;
+    private String partnerCode;
 }

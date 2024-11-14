@@ -7,11 +7,16 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.igot.cios.entity.CornellContentEntity;
 import com.igot.cios.entity.FileInfoEntity;
 import com.igot.cios.exception.CiosContentException;
+import com.igot.cios.repository.CornellContentRepository;
 import com.igot.cios.repository.FileInfoRepository;
 import com.igot.cios.util.CbServerProperties;
 import com.igot.cios.util.Constants;
+import com.igot.cios.util.elasticsearch.service.EsUtilService;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.ValidationMessage;
@@ -53,6 +58,12 @@ public class DataTransformUtility {
 
     @Autowired
     FileInfoRepository fileInfoRepository;
+
+    @Autowired
+    private EsUtilService esUtilService;
+
+    @Autowired
+    private CornellContentRepository cornellContentRepository;
 
     private List<Map<String, String>> processSheetAndSendMessage(Sheet sheet) {
         log.info("CiosContentServiceImpl::processSheetAndSendMessage");
@@ -314,18 +325,6 @@ public class DataTransformUtility {
         return fileId;
     }
 
-    public String getSchemaFilePathForPartner(String partnerCode) {
-        ContentSource contentSource = ContentSource.fromPartnerCode(partnerCode);
-        switch (Objects.requireNonNull(contentSource)) {
-            case CORNELL:
-                return Constants.DATA_PAYLOAD_CORNELL_LOGS_VALIDATION_FILE;
-            case UPGRAD:
-                return Constants.DATA_PAYLOAD_UPGRAD_LOGS_VALIDATION_FILE;
-            default:
-                throw new IllegalArgumentException("No validation schema found for partner: " + partnerCode);
-        }
-    }
-
     public List<String> validateRowData(Map<String, String> row, String schemaFilePath) {
         List<String> invalidErrList = new ArrayList<>();
         try {
@@ -346,11 +345,138 @@ public class DataTransformUtility {
         return invalidErrList;
     }
 
+    public List<String> validateRowData(Map<String, String> row, JsonNode schemaNode) {
+        List<String> invalidErrList = new ArrayList<>();
+        try {
+            JsonNode rowNode = objectMapper.convertValue(row, JsonNode.class);
+            JsonSchemaFactory schemaFactory = JsonSchemaFactory.getInstance();
+            JsonSchema schema = schemaFactory.getSchema(schemaNode);
+            if (rowNode.isArray()) {
+                for (JsonNode objectNode : rowNode) {
+                    validateRowDataObject(schema, objectNode, invalidErrList);
+                }
+            } else {
+                validateRowDataObject(schema, rowNode, invalidErrList);
+            }
+        } catch (IllegalArgumentException e) {
+            throw new RuntimeException(e);
+        }
+        return invalidErrList;
+    }
+
+//    public List<String> getSchemaFilePathForPartner(String partnerCode) {
+//        ContentSource contentSource = ContentSource.fromPartnerCode(partnerCode);
+//        switch (Objects.requireNonNull(contentSource)) {
+//            case CORNELL:
+//                return Constants.DATA_PAYLOAD_CORNELL_LOGS_VALIDATION_FILE;
+//            case UPGRAD:
+//                return Constants.DATA_PAYLOAD_UPGRAD_LOGS_VALIDATION_FILE;
+//            default:
+//                throw new IllegalArgumentException("No validation schema found for partner: " + partnerCode);
+//        }
+//    }
+
     private void validateRowDataObject(JsonSchema schema, JsonNode objectNode, List<String> invalidErrList) {
         Set<ValidationMessage> validationMessages = schema.validate(objectNode);
         if (!validationMessages.isEmpty()) {
             for (ValidationMessage message : validationMessages) {
                 invalidErrList.add(message.getMessage());
+            }
+        }
+    }
+
+    public void loadContentFromExcel(JsonNode processedData, String partnerCode, String fileName, String fileId, List<Object> contentJson,String partnerId) {
+        List<CornellContentEntity> cornellContentEntityList = new ArrayList<>();
+        processedData.forEach(eachContentData -> {
+            JsonNode transformData = transformData(eachContentData, contentJson);
+            Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.FILE_ID, fileId).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.SOURCE, fileName).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PARTNER_CODE, partnerCode).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.STATUS, Constants.NOT_INITIATED).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.CREATED_DATE, currentTime.toString()).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.UPDATED_DATE, currentTime.toString()).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.ACTIVE, Constants.ACTIVE_STATUS).asText();
+            ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PUBLISHED_ON, "0000-00-00 00:00:00").asText();
+            validatePayload(Constants.DATA_PAYLOAD_VALIDATION_FILE, transformData);
+            addSearchTags(transformData);
+            String externalId = transformData.path(Constants.CONTENT).path(Constants.EXTERNAL_ID).asText();
+            CornellContentEntity cornellContentEntity = saveOrUpdateCornellContent(externalId, transformData, eachContentData, currentTime, fileId);
+            cornellContentEntityList.add(cornellContentEntity);
+
+        });
+        cornellBulkSave(cornellContentEntityList, partnerCode);
+    }
+
+    private JsonNode addSearchTags(JsonNode transformData) {
+        List<String> searchTags = new ArrayList<>();
+        searchTags.add(transformData.path(Constants.CONTENT).get(Constants.NAME).textValue().toLowerCase());
+        ArrayNode searchTagsArray = objectMapper.valueToTree(searchTags);
+        ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.CONTENT_SEARCH_TAGS, searchTagsArray);
+        return transformData;
+    }
+
+    public CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime, String fileId) {
+        Optional<CornellContentEntity> optExternalContent = cornellContentRepository.findByExternalId(externalId);
+        if (optExternalContent.isPresent()) {
+            CornellContentEntity externalContent = optExternalContent.get();
+            externalContent.setExternalId(externalId);
+            externalContent.setCiosData(transformData);
+            externalContent.setIsActive(externalContent.getIsActive());
+            externalContent.setCreatedDate(externalContent.getCreatedDate());
+            externalContent.setUpdatedDate(currentTime);
+            externalContent.setSourceData(rawContentData);
+            externalContent.setFileId(fileId);
+            return externalContent;
+        } else {
+            CornellContentEntity externalContent = new CornellContentEntity();
+            externalContent.setExternalId(externalId);
+            externalContent.setCiosData(transformData);
+            externalContent.setIsActive(false);
+            externalContent.setCreatedDate(currentTime);
+            externalContent.setUpdatedDate(currentTime);
+            externalContent.setSourceData(rawContentData);
+            externalContent.setFileId(fileId);
+            return externalContent;
+        }
+
+    }
+
+    private void cornellBulkSave(List<CornellContentEntity> cornellContentEntityList, String partnerCode) {
+        cornellContentRepository.saveAll(cornellContentEntityList);
+        cornellContentEntityList.forEach(contentEntity -> {
+            try {
+                Map<String, Object> entityMap = objectMapper.convertValue(contentEntity, Map.class);
+                flattenContentData(entityMap);
+                String uniqueId = partnerCode + "_" + contentEntity.getExternalId();
+                esUtilService.addDocument(
+                        Constants.CIOS_CONTENT_INDEX_NAME,
+                        Constants.INDEX_TYPE,
+                        uniqueId,
+                        entityMap,
+                        cbServerProperties.getElasticCiosContentJsonPath()
+                );
+                //log.info("Added data to ES document for externalId: {}", contentEntity.getExternalId());
+            } catch (Exception e) {
+                log.error("Error while processing contentEntity with externalId: {}", contentEntity.getExternalId(), e);
+            }
+        });
+        Long totalCourseCount = cornellContentRepository.count();
+        JsonNode response = fetchPartnerInfoUsingApi(partnerCode);
+        JsonNode resultData = response.path(Constants.RESULT);
+        JsonNode data = resultData.path(Constants.DATA);
+        ((ObjectNode) data).put(Constants.TOTAL_COURSES_COUNT, totalCourseCount);
+        updatingPartnerInfo(resultData);
+    }
+
+    public void flattenContentData(Map<String, Object> entityMap) {
+        if (entityMap.containsKey("ciosData") && entityMap.get("ciosData") instanceof Map) {
+            Map<String, Object> ciosDataMap = (Map<String, Object>) entityMap.get("ciosData");
+            if (ciosDataMap.containsKey("content") && ciosDataMap.get("content") instanceof Map) {
+                Map<String, Object> contentMap = (Map<String, Object>) ciosDataMap.get("content");
+                entityMap.putAll(contentMap);
+                entityMap.remove(Constants.CIOS_DATA);
+                entityMap.remove(Constants.SOURCE_DATA);
             }
         }
     }
