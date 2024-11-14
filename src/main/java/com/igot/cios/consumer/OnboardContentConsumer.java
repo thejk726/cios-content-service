@@ -47,7 +47,7 @@ public class OnboardContentConsumer {
             log.info("Received {} records from Kafka", receivedMessage.size());
             List<Map<String, String>> processedData = objectMapper.convertValue(receivedMessage.get("data"), new TypeReference<List<Map<String, String>>>() {});
             try {
-                ciosContentServiceimpl.processRowsAndCreateLogs(processedData, partnerId, fileId, fileName, initiatedOn,partnerCode, loadContentErrorMessage);
+                //ciosContentServiceimpl.processRowsAndCreateLogs(processedData, partnerId, fileId, fileName, initiatedOn,partnerCode, loadContentErrorMessage);
                 processReceivedData(partnerCode, processedData, fileName, fileId, initiatedOn,partnerId);
             }catch (Exception e){
                 loadContentErrorMessage = "Error in processReceivedData: " + e.getMessage();
