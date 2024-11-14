@@ -25,5 +25,5 @@ public interface CornellContentRepository extends JpaRepository<CornellContentEn
             nativeQuery = true)
     Page<CornellContentEntity> findAllCiosDataAndIsActive(@Param("isActive") Boolean isActive, Pageable pageable, @Param("keyword") String keyword);
 
-    List<CornellContentEntity> findByExternalIdIn(List<String> externalIds);
+    List<CornellContentEntity> findByExternalIdInAndPartnerCode(List<String> externalIds,String partnerCode);
 }

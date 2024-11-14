@@ -206,8 +206,9 @@ public class CornellPluginServiceImpl implements ContentPartnerPluginService {
     @Override
     public ResponseEntity<?> deleteNotPublishContent(DeleteContentRequestDto deleteContentRequestDto) {
         SBApiResponse response = SBApiResponse.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
+        String partnerCode=deleteContentRequestDto.getPartnerCode();
         List<String> externalIds = deleteContentRequestDto.getExternalId();
-        List<CornellContentEntity> entities = cornellContentRepository.findByExternalIdIn(externalIds);
+        List<CornellContentEntity> entities = cornellContentRepository.findByExternalIdInAndPartnerCode(externalIds,partnerCode);
         List<String> errors = new ArrayList<>();
         for (String id : externalIds) {
             Optional<CornellContentEntity> entityOpt = entities.stream()
