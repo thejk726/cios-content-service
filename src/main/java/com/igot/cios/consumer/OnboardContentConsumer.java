@@ -69,7 +69,7 @@ public class OnboardContentConsumer {
         JsonNode entity = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
         List<Object> contentJson = objectMapper.convertValue(entity.path("result").path("trasformContentJson"), new TypeReference<List<Object>>() {
         });
-        dataTransformUtility.loadContentFromExcel(jsonData, partnerCode, fileName, fileId, contentJson,partnerId);
+        dataTransformUtility.updateProcessedDataInDb(jsonData, partnerCode, fileName, fileId, contentJson,partnerId);
     }
 
 }

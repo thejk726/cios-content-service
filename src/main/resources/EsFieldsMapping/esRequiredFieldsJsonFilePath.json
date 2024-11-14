@@ -47,6 +47,9 @@
   "partnerCode": {
     "type": "keyword"
   },
+  "partnerId": {
+    "type": "keyword"
+  },
   "status": {
     "type": "keyword"
   },

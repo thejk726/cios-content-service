@@ -364,18 +364,6 @@ public class DataTransformUtility {
         return invalidErrList;
     }
 
-//    public List<String> getSchemaFilePathForPartner(String partnerCode) {
-//        ContentSource contentSource = ContentSource.fromPartnerCode(partnerCode);
-//        switch (Objects.requireNonNull(contentSource)) {
-//            case CORNELL:
-//                return Constants.DATA_PAYLOAD_CORNELL_LOGS_VALIDATION_FILE;
-//            case UPGRAD:
-//                return Constants.DATA_PAYLOAD_UPGRAD_LOGS_VALIDATION_FILE;
-//            default:
-//                throw new IllegalArgumentException("No validation schema found for partner: " + partnerCode);
-//        }
-//    }
-
     private void validateRowDataObject(JsonSchema schema, JsonNode objectNode, List<String> invalidErrList) {
         Set<ValidationMessage> validationMessages = schema.validate(objectNode);
         if (!validationMessages.isEmpty()) {
@@ -385,7 +373,7 @@ public class DataTransformUtility {
         }
     }
 
-    public void loadContentFromExcel(JsonNode processedData, String partnerCode, String fileName, String fileId, List<Object> contentJson,String partnerId) {
+    public void updateProcessedDataInDb(JsonNode processedData, String partnerCode, String fileName, String fileId, List<Object> contentJson,String partnerId) {
         List<CornellContentEntity> cornellContentEntityList = new ArrayList<>();
         processedData.forEach(eachContentData -> {
             JsonNode transformData = transformData(eachContentData, contentJson);
