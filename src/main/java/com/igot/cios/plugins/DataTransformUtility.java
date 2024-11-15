@@ -406,19 +406,22 @@ public class DataTransformUtility {
     }
 
     public CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime, String fileId,String partnerId,String partnerCode) {
-        Optional<CornellContentEntity> optExternalContent = cornellContentRepository.findByExternalId(externalId);
+        Optional<CornellContentEntity> optExternalContent = cornellContentRepository.findByExternalIdAndPartnerId(externalId,partnerId);
         if (optExternalContent.isPresent()) {
-            CornellContentEntity externalContent = optExternalContent.get();
-            externalContent.setExternalId(externalId);
-            externalContent.setCiosData(transformData);
-            externalContent.setIsActive(externalContent.getIsActive());
-            externalContent.setCreatedDate(externalContent.getCreatedDate());
-            externalContent.setUpdatedDate(currentTime);
-            externalContent.setSourceData(rawContentData);
-            externalContent.setFileId(fileId);
-            externalContent.setPartnerId(partnerId);
-            externalContent.setPartnerCode((partnerCode));
-            return externalContent;
+//            CornellContentEntity externalContent = optExternalContent.get();
+//            if(!externalContent.getCiosData().get("status").equals("live")) {
+//                externalContent.setExternalId(externalId);
+//                externalContent.setCiosData(transformData);
+//                externalContent.setIsActive(externalContent.getIsActive());
+//                externalContent.setCreatedDate(externalContent.getCreatedDate());
+//                externalContent.setUpdatedDate(currentTime);
+//                externalContent.setSourceData(rawContentData);
+//                externalContent.setFileId(fileId);
+//                externalContent.setPartnerId(partnerId);
+//                externalContent.setPartnerCode((partnerCode));
+//            }
+//            return externalContent;
+            log.error("data already present in db for the given externalid {} and partnerid {}",externalId,partnerId);
         } else {
             CornellContentEntity externalContent = new CornellContentEntity();
             externalContent.setExternalId(externalId);
@@ -433,7 +436,7 @@ public class DataTransformUtility {
             externalContent.setPartnerCode((partnerCode));
             return externalContent;
         }
-
+        return null;
     }
 
     private void cornellBulkSave(List<CornellContentEntity> cornellContentEntityList, String partnerCode) {
