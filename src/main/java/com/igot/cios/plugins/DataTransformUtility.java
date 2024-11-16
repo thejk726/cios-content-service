@@ -406,18 +406,20 @@ public class DataTransformUtility {
     }
 
     public CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, JsonNode rawContentData, Timestamp currentTime, String fileId,String partnerId,String partnerCode) {
-        Optional<CornellContentEntity> optExternalContent = cornellContentRepository.findByExternalId(externalId);
+        Optional<CornellContentEntity> optExternalContent = cornellContentRepository.findByExternalIdAndPartnerId(externalId,partnerId);
         if (optExternalContent.isPresent()) {
             CornellContentEntity externalContent = optExternalContent.get();
-            externalContent.setExternalId(externalId);
-            externalContent.setCiosData(transformData);
-            externalContent.setIsActive(externalContent.getIsActive());
-            externalContent.setCreatedDate(externalContent.getCreatedDate());
-            externalContent.setUpdatedDate(currentTime);
-            externalContent.setSourceData(rawContentData);
-            externalContent.setFileId(fileId);
-            externalContent.setPartnerId(partnerId);
-            externalContent.setPartnerCode((partnerCode));
+            if(!externalContent.getCiosData().get("status").equals("live")||externalContent.getCiosData().get("status").equals("draft")) {
+                externalContent.setExternalId(externalId);
+                externalContent.setCiosData(transformData);
+                externalContent.setIsActive(externalContent.getIsActive());
+                externalContent.setCreatedDate(externalContent.getCreatedDate());
+                externalContent.setUpdatedDate(currentTime);
+                externalContent.setSourceData(rawContentData);
+                externalContent.setFileId(fileId);
+                externalContent.setPartnerId(partnerId);
+                externalContent.setPartnerCode((partnerCode));
+            }
             return externalContent;
         } else {
             CornellContentEntity externalContent = new CornellContentEntity();
@@ -433,7 +435,6 @@ public class DataTransformUtility {
             externalContent.setPartnerCode((partnerCode));
             return externalContent;
         }
-
     }
 
     private void cornellBulkSave(List<CornellContentEntity> cornellContentEntityList, String partnerCode) {
