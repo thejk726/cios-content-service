@@ -409,7 +409,7 @@ public class DataTransformUtility {
         Optional<CornellContentEntity> optExternalContent = cornellContentRepository.findByExternalIdAndPartnerId(externalId,partnerId);
         if (optExternalContent.isPresent()) {
             CornellContentEntity externalContent = optExternalContent.get();
-            if(!externalContent.getCiosData().get("status").equals("live")) {
+            if(!externalContent.getCiosData().get("status").equals("live")||externalContent.getCiosData().get("status").equals("draft")) {
                 externalContent.setExternalId(externalId);
                 externalContent.setCiosData(transformData);
                 externalContent.setIsActive(externalContent.getIsActive());
