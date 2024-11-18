@@ -12,6 +12,7 @@ import com.igot.cios.util.elasticsearch.dto.SearchResult;
 import com.networknt.schema.JsonSchemaFactory;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.DocWriteResponse;
+import org.elasticsearch.action.admin.indices.refresh.RefreshRequest;
 import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
@@ -118,6 +119,9 @@ public class EsUtilServiceImpl implements EsUtilService {
             DeleteResponse response = elasticsearchClient.delete(request, RequestOptions.DEFAULT);
             if (response.getResult() == DocWriteResponse.Result.DELETED) {
                 log.info("Document deleted successfully from elasticsearch.");
+                RefreshRequest refreshRequest = new RefreshRequest(esIndexName);
+                elasticsearchClient.indices().refresh(refreshRequest, RequestOptions.DEFAULT);
+                log.info("Index refreshed to reflect the document deletion.");
             } else {
                 log.error("Document not found or failed to delete from elasticsearch.");
             }

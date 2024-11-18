@@ -409,7 +409,7 @@ public class DataTransformUtility {
         Optional<CornellContentEntity> optExternalContent = cornellContentRepository.findByExternalIdAndPartnerId(externalId,partnerId);
         if (optExternalContent.isPresent()) {
             CornellContentEntity externalContent = optExternalContent.get();
-            if(!externalContent.getCiosData().get("status").equals("live")||externalContent.getCiosData().get("status").equals("draft")) {
+            if(!externalContent.getCiosData().get("content").get("status").equals("live")||externalContent.getCiosData().get("content").get("status").equals("draft")) {
                 externalContent.setExternalId(externalId);
                 externalContent.setCiosData(transformData);
                 externalContent.setIsActive(externalContent.getIsActive());
@@ -456,7 +456,7 @@ public class DataTransformUtility {
                 log.error("Error while processing contentEntity with externalId: {}", contentEntity.getExternalId(), e);
             }
         });
-        Long totalCourseCount = cornellContentRepository.count();
+        Long totalCourseCount = cornellContentRepository.countByPartnerCode(partnerCode);
         JsonNode response = fetchPartnerInfoUsingApi(partnerCode);
         JsonNode resultData = response.path(Constants.RESULT);
         JsonNode data = resultData.path(Constants.DATA);
