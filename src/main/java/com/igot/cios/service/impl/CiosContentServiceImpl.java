@@ -248,7 +248,7 @@ public class CiosContentServiceImpl implements CiosContentService {
     }
     @Override
     public Object readContentByExternalId(String partnercode, String externalid) {
-        Optional<CornellContentEntity> entity = repository.findByExternalId(externalid);
+        Optional<CornellContentEntity> entity = repository.findByExternalIdAndPartnerCode(externalid,partnercode);
         if (entity.isPresent()) {
             return entity.get().getCiosData();
         } else {
