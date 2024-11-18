@@ -21,6 +21,8 @@ public interface CornellContentRepository extends JpaRepository<CornellContentEn
 
     List<CornellContentEntity> findByIsActive(boolean b);
 
+    Long countByPartnerCode(String partnerCode);
+
     @Query(value = "SELECT * FROM public.cornell_content_entity c " +
             "WHERE c.is_active = :isActive " +
             "AND LOWER(c.cios_data->'content'->>'name') ILIKE LOWER(CONCAT('%', :keyword, '%'))",

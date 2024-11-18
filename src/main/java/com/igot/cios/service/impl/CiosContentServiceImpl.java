@@ -268,14 +268,14 @@ public class CiosContentServiceImpl implements CiosContentService {
         Timestamp currentTime = new Timestamp(System.currentTimeMillis());
         String externalId = jsonNode.path("content").get("externalId").asText();
         boolean isActive = jsonNode.path("content").get("isActive").asBoolean(false);
-        return saveOrUpdateCornellContent(externalId,jsonNode,currentTime,isActive,partnerCode,partnerId);
+        return saveOrUpdateContent(externalId,jsonNode,currentTime,isActive,partnerCode,partnerId);
     }
 
-    private CornellContentEntity saveOrUpdateCornellContent(String externalId, JsonNode transformData, Timestamp currentTime, boolean isActive, String partnerCode,String partnerId) {
+    private CornellContentEntity saveOrUpdateContent(String externalId, JsonNode transformData, Timestamp currentTime, boolean isActive, String partnerCode,String partnerId) {
         ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PARTNER_CODE, partnerCode).asText();
         addSearchTags(transformData);
         CornellContentEntity externalContent;
-        Optional<CornellContentEntity> optExternalContent = repository.findByExternalId(externalId);
+        Optional<CornellContentEntity> optExternalContent = repository.findByExternalIdAndPartnerId(externalId,partnerId);
         if (optExternalContent.isPresent()) {
             externalContent = optExternalContent.get();
             externalContent.setExternalId(externalId);
