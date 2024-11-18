@@ -223,7 +223,14 @@ public class CiosContentServiceImpl implements CiosContentService {
             } else {
                 errors.add("External ID: " + id + " does not exist.");
             }
+
         }
+        Long totalCourseCount = repository.countByPartnerCode(partnerCode);
+        JsonNode contentPartnerResponse = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
+        JsonNode resultData = contentPartnerResponse.path(Constants.RESULT);
+        JsonNode data = resultData.path(Constants.DATA);
+        ((ObjectNode) data).put(Constants.TOTAL_COURSES_COUNT, totalCourseCount);
+        dataTransformUtility.updatingPartnerInfo(resultData);
         if (!errors.isEmpty()) {
             log.error("Validation errors: {}", errors);
             return buildErrorResponse(response, HttpStatus.BAD_REQUEST, String.join("\n", errors));
