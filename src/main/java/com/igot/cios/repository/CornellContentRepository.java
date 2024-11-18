@@ -15,11 +15,9 @@ import java.util.Optional;
 @Repository
 public interface CornellContentRepository extends JpaRepository<CornellContentEntity, String> {
 
-    Optional<CornellContentEntity> findByExternalId(String externalId);
-
     Optional<CornellContentEntity> findByExternalIdAndPartnerId(String externalId, String partnerId);
 
-    List<CornellContentEntity> findByIsActive(boolean b);
+    Optional<CornellContentEntity> findByExternalIdAndPartnerCode(String externalId, String partnerCode);
 
     Long countByPartnerCode(String partnerCode);
 
