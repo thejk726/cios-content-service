@@ -18,9 +18,7 @@ import com.igot.cios.repository.CornellContentRepository;
 import com.igot.cios.repository.FileInfoRepository;
 import com.igot.cios.service.CiosContentService;
 import com.igot.cios.storage.StoreFileToGCP;
-import com.igot.cios.util.CbServerProperties;
-import com.igot.cios.util.Constants;
-import com.igot.cios.util.PayloadValidation;
+import com.igot.cios.util.*;
 import com.igot.cios.util.elasticsearch.dto.SearchCriteria;
 import com.igot.cios.util.elasticsearch.dto.SearchResult;
 import com.igot.cios.util.elasticsearch.service.EsUtilService;
@@ -74,13 +72,21 @@ public class CiosContentServiceImpl implements CiosContentService {
     private CbServerProperties cbServerProperties;
 
     @Override
-    public void loadContentFromExcel(MultipartFile file, String partnerCode, String partnerId) {
+    public SBApiResponse loadContentFromExcel(MultipartFile file, String partnerCode, String partnerId) {
         log.info("CiosContentServiceImpl::loadContentFromExcel");
+        SBApiResponse response = SBApiResponse.createDefaultResponse(Constants.API_CIOS_LOAD_EXCEL_CONTENT);
         String fileName = file.getOriginalFilename();
         Timestamp initiatedOn = new Timestamp(System.currentTimeMillis());
         String fileId = dataTransformUtility.createFileInfo(partnerId, null, fileName, initiatedOn, null, Constants.CONTENT_UPLOAD_IN_PROGRESS , null);
         try {
             List<Map<String, String>> processedData = dataTransformUtility.processExcelFile(file);
+            if(processedData == null || processedData.isEmpty()){
+                dataTransformUtility.createFileInfo(partnerId, fileId, fileName, initiatedOn, new Timestamp(System.currentTimeMillis()), Constants.CONTENT_UPLOAD_FAILED, null);
+                response.getParams().setErrmsg(Constants.FILE_FORMAT_ERROR);
+                response.getParams().setStatus(Constants.FAILED);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
             log.info("No.of processedData from excel: " + processedData.size());
             int batchSize = 500;
             List<List<Map<String, String>>> batches = splitIntoBatches(processedData, batchSize);
@@ -95,11 +101,16 @@ public class CiosContentServiceImpl implements CiosContentService {
 
                 kafkaProducer.push(cbServerProperties.getCiosContentOnboardTopic(), batchDataMap);
                 log.info("Batch of size {} sent to Kafka", batch.size());
+                return response;
             }
         } catch (Exception e) {
             dataTransformUtility.createFileInfo(partnerId, fileId, fileName, initiatedOn, new Timestamp(System.currentTimeMillis()), Constants.CONTENT_UPLOAD_FAILED, null);
-            throw new RuntimeException(e.getMessage());
+            response.getParams().setErrmsg(e.getMessage());
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
         }
+        return null;
     }
 
     @Override

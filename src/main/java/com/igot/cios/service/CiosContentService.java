@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.igot.cios.dto.DeleteContentRequestDto;
 import com.igot.cios.dto.PaginatedResponse;
 import com.igot.cios.dto.RequestDto;
+import com.igot.cios.dto.SBApiResponse;
 import com.igot.cios.entity.FileInfoEntity;
 import com.igot.cios.util.elasticsearch.dto.SearchCriteria;
 import com.igot.cios.util.elasticsearch.dto.SearchResult;
@@ -17,7 +18,7 @@ import java.util.List;
 
 @Service
 public interface CiosContentService {
-    void loadContentFromExcel(MultipartFile file, String partnerCode, String partnerId) throws IOException;
+    SBApiResponse loadContentFromExcel(MultipartFile file, String partnerCode, String partnerId) throws IOException;
 
     PaginatedResponse<?> fetchAllContentFromSecondaryDb(RequestDto dto);
 

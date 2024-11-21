@@ -3,6 +3,7 @@ package com.igot.cios.controller;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.igot.cios.dto.DeleteContentRequestDto;
 import com.igot.cios.dto.RequestDto;
+import com.igot.cios.dto.SBApiResponse;
 import com.igot.cios.entity.FileInfoEntity;
 import com.igot.cios.exception.CiosContentException;
 import com.igot.cios.service.CiosContentService;
@@ -16,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 
@@ -27,17 +29,13 @@ public class CiosContentController {
     CiosContentService ciosContentService;
 
     @PostMapping(value = "/v1/loadContentFromExcel/{partnercode}/{partnerId}", consumes = "multipart/form-data")
-    public ResponseEntity<Object> loadContentFromExcel(
+    public ResponseEntity<SBApiResponse> loadContentFromExcel(
             @RequestParam(value = "file") MultipartFile file,
             @PathVariable("partnercode") String partnerCode,
-            @PathVariable("partnerId") String partnerId){
-        try {
-            ciosContentService.loadContentFromExcel(file, partnerCode, partnerId);
-            return ResponseEntity.status(HttpStatus.OK).body(new HashMap<>());
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error during loading of content from excel: " + e.getMessage());
-        }
+            @PathVariable("partnerId") String partnerId) throws IOException {
+
+        SBApiResponse apiResponse = ciosContentService.loadContentFromExcel(file, partnerCode, partnerId);
+        return new ResponseEntity<>(apiResponse, apiResponse.getResponseCode());
     }
 
     @PostMapping(value = "/v1/readAllContentFromDb")
