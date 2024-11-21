@@ -96,6 +96,8 @@ public class Constants {
     public static final String INITIATED_ON = "initiatedOn";
     public static final String CONTENT_UPLOAD_IN_PROGRESS = "InProgress";
     public static final String PARTNER_ID = "partnerId";
+    public static final String API_CIOS_LOAD_EXCEL_CONTENT = "api.cios.load.excel.content";
+    public static final String FILE_FORMAT_ERROR = "File format is not correct, Please upload valid file format";
 
 
     private Constants() {
