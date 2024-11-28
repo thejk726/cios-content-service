@@ -3,24 +3,22 @@ package com.igot.cios.service.impl;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.igot.cios.dto.DeleteContentRequestDto;
 import com.igot.cios.dto.PaginatedResponse;
 import com.igot.cios.dto.RequestDto;
 import com.igot.cios.dto.SBApiResponse;
+import com.igot.cios.entity.CornellContentEntity;
 import com.igot.cios.entity.FileInfoEntity;
 import com.igot.cios.exception.CiosContentException;
 import com.igot.cios.kafka.KafkaProducer;
-import com.igot.cios.plugins.ContentPartnerPluginService;
-import com.igot.cios.plugins.ContentSource;
 import com.igot.cios.plugins.DataTransformUtility;
-import com.igot.cios.plugins.config.ContentPartnerServiceFactory;
+import com.igot.cios.repository.CornellContentRepository;
 import com.igot.cios.repository.FileInfoRepository;
 import com.igot.cios.service.CiosContentService;
 import com.igot.cios.storage.StoreFileToGCP;
-import com.igot.cios.util.CbServerProperties;
-import com.igot.cios.util.Constants;
-import com.igot.cios.util.PayloadValidation;
+import com.igot.cios.util.*;
 import com.igot.cios.util.elasticsearch.dto.SearchCriteria;
 import com.igot.cios.util.elasticsearch.dto.SearchResult;
 import com.igot.cios.util.elasticsearch.service.EsUtilService;
@@ -29,6 +27,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -57,7 +57,7 @@ public class CiosContentServiceImpl implements CiosContentService {
     @Value("${spring.kafka.cornell.topic.name}")
     private String topic;
     @Autowired
-    private ContentPartnerServiceFactory contentPartnerServiceFactory;
+    private CornellContentRepository repository;
     @Autowired
     private FileInfoRepository fileInfoRepository;
     @Autowired
@@ -72,18 +72,20 @@ public class CiosContentServiceImpl implements CiosContentService {
     private CbServerProperties cbServerProperties;
 
     @Override
-    public void loadContentFromExcel(MultipartFile file, String partnerCode, String partnerId) {
+    public SBApiResponse loadContentFromExcel(MultipartFile file, String partnerCode, String partnerId) {
         log.info("CiosContentServiceImpl::loadContentFromExcel");
-        ContentSource contentSource = ContentSource.fromPartnerCode(partnerCode);
-        if (contentSource == null) {
-            log.warn("Unknown provider name: " + partnerCode);
-            throw new CiosContentException("Unknown provider name:" + partnerCode, HttpStatus.BAD_REQUEST);
-        }
+        SBApiResponse response = SBApiResponse.createDefaultResponse(Constants.API_CIOS_LOAD_EXCEL_CONTENT);
         String fileName = file.getOriginalFilename();
         Timestamp initiatedOn = new Timestamp(System.currentTimeMillis());
-        String fileId = dataTransformUtility.createFileInfo(partnerId, null, fileName, initiatedOn, null, Constants.CONTENT_UPLOAD_IN_PROGRESS , null);
         try {
             List<Map<String, String>> processedData = dataTransformUtility.processExcelFile(file);
+            if(processedData == null || processedData.isEmpty()){
+                response.getParams().setErrmsg(Constants.FILE_FORMAT_ERROR);
+                response.getParams().setStatus(Constants.FAILED);
+                response.setResponseCode(HttpStatus.BAD_REQUEST);
+                return response;
+            }
+            String fileId = dataTransformUtility.createFileInfo(partnerId, null, fileName, initiatedOn, null, Constants.CONTENT_UPLOAD_IN_PROGRESS , null);
             log.info("No.of processedData from excel: " + processedData.size());
             int batchSize = 500;
             List<List<Map<String, String>>> batches = splitIntoBatches(processedData, batchSize);
@@ -93,28 +95,28 @@ public class CiosContentServiceImpl implements CiosContentService {
                 batchDataMap.put(Constants.FILE_NAME, fileName);
                 batchDataMap.put(Constants.INITIATED_ON, initiatedOn);
                 batchDataMap.put(Constants.FILE_ID, fileId);
+                batchDataMap.put(Constants.PARTNER_ID, partnerId);
                 batchDataMap.put("data", batch);
 
                 kafkaProducer.push(cbServerProperties.getCiosContentOnboardTopic(), batchDataMap);
                 log.info("Batch of size {} sent to Kafka", batch.size());
+                return response;
             }
         } catch (Exception e) {
-            dataTransformUtility.createFileInfo(partnerId, fileId, fileName, initiatedOn, new Timestamp(System.currentTimeMillis()), Constants.CONTENT_UPLOAD_FAILED, null);
-            throw new RuntimeException(e.getMessage());
+            response.getParams().setErrmsg(e.getMessage());
+            response.getParams().setStatus(Constants.FAILED);
+            response.setResponseCode(HttpStatus.BAD_REQUEST);
+            return response;
         }
+        return null;
     }
 
     @Override
     public PaginatedResponse<?> fetchAllContentFromSecondaryDb(RequestDto dto) {
         log.info("CiosContentServiceImpl::fetchAllCornellContentFromDb");
-        ContentSource contentSource = ContentSource.fromPartnerCode(dto.getPartnerCode());
-        if (contentSource == null) {
-            log.warn("Unknown provider name: " + dto.getPartnerCode());
-            throw new CiosContentException("Unknown provider name:" + dto.getPartnerCode(), HttpStatus.BAD_REQUEST);
-        }
         try {
-            ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(contentSource);
-            Page<?> pageData = service.fetchAllContentFromSecondaryDb(dto);
+            Pageable pageable = PageRequest.of(dto.getPage(), dto.getSize());
+            Page<?> pageData = repository.findAllCiosDataAndIsActive(dto.getIsActive(), pageable, dto.getKeyword());
             if (pageData != null) {
                 return new PaginatedResponse<>(
                         pageData.getContent(),
@@ -199,25 +201,68 @@ public class CiosContentServiceImpl implements CiosContentService {
     @Override
     public ResponseEntity<?> deleteNotPublishContent(DeleteContentRequestDto deleteContentRequestDto) {
         log.info("Deleting non-published content");
-        String partnerCode = deleteContentRequestDto.getPartnerCode();
-        ContentSource contentSource = ContentSource.fromPartnerCode(partnerCode);
-        if (contentSource == null) {
-            log.warn("Unknown provider name: " + deleteContentRequestDto.getPartnerCode());
-            throw new CiosContentException("Unknown provider name:" + deleteContentRequestDto.getPartnerCode(), HttpStatus.BAD_REQUEST);
+        SBApiResponse response = SBApiResponse.createDefaultResponse(Constants.API_CB_PLAN_PUBLISH);
+        String partnerCode=deleteContentRequestDto.getPartnerCode();
+        List<String> externalIds = deleteContentRequestDto.getExternalId();
+        List<CornellContentEntity> entities = repository.findByExternalIdInAndPartnerCode(externalIds,partnerCode);
+        List<String> errors = new ArrayList<>();
+        for (String id : externalIds) {
+            Optional<CornellContentEntity> entityOpt = entities.stream()
+                    .filter(entity -> entity.getExternalId().equals(id))
+                    .findFirst();
+            if (entityOpt.isPresent()) {
+                CornellContentEntity entity = entityOpt.get();
+                if (entity.getIsActive()) {
+                    errors.add("External ID: " + id + " is live, cannot delete.");
+                } else {
+                    JsonNode ciosData = entity.getCiosData(); // Assuming this getter method exists
+                    if (ciosData != null && ciosData.path("content").has("status")) {
+                        String status = ciosData.path("content").get("status").asText();
+                        if ("notInitiated".equalsIgnoreCase(status)) {
+                            repository.delete(entity);
+                            String uniqueId = deleteContentRequestDto.getPartnerCode() + "_" + entity.getExternalId();
+                            esUtilService.deleteDocument(uniqueId, Constants.CIOS_CONTENT_INDEX_NAME);
+                        } else {
+                            errors.add("External ID: " + id + " cannot be deleted because its status is not 'notInitiated'.");
+                        }
+                    } else {
+                        errors.add("External ID: " + id + " does not have a valid status in ciosData.");
+                    }
+                }
+            } else {
+                errors.add("External ID: " + id + " does not exist.");
+            }
+
         }
-        ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(contentSource);
-        return service.deleteNotPublishContent(deleteContentRequestDto);
+        Long totalCourseCount = repository.countByPartnerCode(partnerCode);
+        JsonNode contentPartnerResponse = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
+        JsonNode resultData = contentPartnerResponse.path(Constants.RESULT);
+        JsonNode data = resultData.path(Constants.DATA);
+        ((ObjectNode) data).put(Constants.TOTAL_COURSES_COUNT, totalCourseCount);
+        dataTransformUtility.updatingPartnerInfo(resultData);
+        if (!errors.isEmpty()) {
+            log.error("Validation errors: {}", errors);
+            return buildErrorResponse(response, HttpStatus.BAD_REQUEST, String.join("\n", errors));
+        }
+        response.getResult().put(Constants.STATUS, Constants.SUCCESS);
+        response.getResult().put(Constants.MESSAGE, "Content deleted successfully.");
+        return ResponseEntity.ok(response);
     }
 
+    private ResponseEntity<?> buildErrorResponse(SBApiResponse response, HttpStatus status, String errorMessage) {
+        response.getParams().setStatus(Constants.FAILED);
+        response.getParams().setErr(errorMessage);
+        response.setResponseCode(status);
+        return ResponseEntity.status(status).body(response);
+    }
     @Override
     public Object readContentByExternalId(String partnercode, String externalid) {
-        ContentSource contentSource = ContentSource.fromPartnerCode(partnercode);
-        if (contentSource == null) {
-            log.warn("Unknown provider name: " + partnercode);
-            throw new CiosContentException("Unknown provider name:" + partnercode, HttpStatus.BAD_REQUEST);
+        Optional<CornellContentEntity> entity = repository.findByExternalIdAndPartnerCode(externalid,partnercode);
+        if (entity.isPresent()) {
+            return entity.get().getCiosData();
+        } else {
+            throw new CiosContentException("No data found for given id", externalid, HttpStatus.BAD_REQUEST);
         }
-        ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(contentSource);
-        return service.readContentByExternalId(externalid);
     }
 
     @Override
@@ -235,43 +280,99 @@ public class CiosContentServiceImpl implements CiosContentService {
     public Object updateContent(JsonNode jsonNode) {
         log.info("CiosContentServiceImpl::updateContent");
         String partnerCode = jsonNode.path("content").get("contentPartner").get("partnerCode").asText();
-        ContentSource contentSource = ContentSource.fromPartnerCode(partnerCode);
-        if (contentSource == null) {
-            log.warn("Unknown provider name: " + partnerCode);
-            throw new CiosContentException("Unknown provider name:" + partnerCode, HttpStatus.BAD_REQUEST);
-        }
-        ContentPartnerPluginService service = contentPartnerServiceFactory.getContentPartnerPluginService(contentSource);
-        dataTransformUtility.validatePayload(Constants.UPDATED_DATA_PAYLOAD_VALIDATION_FILE, jsonNode);
-        return service.updateContent(jsonNode, partnerCode);
+        String partnerId = jsonNode.path("content").get("contentPartner").get("id").asText();
+        Timestamp currentTime = new Timestamp(System.currentTimeMillis());
+        String externalId = jsonNode.path("content").get("externalId").asText();
+        boolean isActive = jsonNode.path("content").get("isActive").asBoolean(false);
+        return saveOrUpdateContent(externalId,jsonNode,currentTime,isActive,partnerCode,partnerId);
     }
 
-    public void processRowsAndCreateLogs(List<Map<String, String>> processedData, JsonNode entity, String fileId, String fileName, Timestamp initiatedOn, String partnerCode) throws IOException {
+    private CornellContentEntity saveOrUpdateContent(String externalId, JsonNode transformData, Timestamp currentTime, boolean isActive, String partnerCode,String partnerId) {
+        ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.PARTNER_CODE, partnerCode).asText();
+        addSearchTags(transformData);
+        CornellContentEntity externalContent;
+        Optional<CornellContentEntity> optExternalContent = repository.findByExternalIdAndPartnerId(externalId,partnerId);
+        if (optExternalContent.isPresent()) {
+            externalContent = optExternalContent.get();
+            externalContent.setExternalId(externalId);
+            externalContent.setCiosData(transformData);
+            externalContent.setIsActive(isActive);
+            externalContent.setCreatedDate(externalContent.getCreatedDate());
+            externalContent.setUpdatedDate(currentTime);
+            externalContent.setPartnerCode(partnerCode);
+            externalContent.setPartnerId(partnerId);
+        } else {
+            externalContent = new CornellContentEntity();
+            externalContent.setExternalId(externalId);
+            externalContent.setCiosData(transformData);
+            externalContent.setIsActive(isActive);
+            externalContent.setCreatedDate(currentTime);
+            externalContent.setUpdatedDate(currentTime);
+            externalContent.setPartnerCode(partnerCode);
+            externalContent.setPartnerId(partnerId);
+        }
+        repository.save(externalContent);
+        Map<String, Object> entityMap = objectMapper.convertValue(externalContent, Map.class);
+        dataTransformUtility.flattenContentData(entityMap);
+        String uniqueId = partnerCode + "_" + externalContent.getExternalId();
+        esUtilService.updateDocument(Constants.CIOS_CONTENT_INDEX_NAME, Constants.INDEX_TYPE,
+                uniqueId,
+                entityMap,
+                cbServerProperties.getElasticCiosContentJsonPath()
+        );
+        return externalContent;
+    }
+
+    private JsonNode addSearchTags(JsonNode transformData) {
+        List<String> searchTags = new ArrayList<>();
+        searchTags.add(transformData.path(Constants.CONTENT).get(Constants.NAME).textValue().toLowerCase());
+        ArrayNode searchTagsArray = objectMapper.valueToTree(searchTags);
+        ((ObjectNode) transformData.path(Constants.CONTENT)).put(Constants.CONTENT_SEARCH_TAGS, searchTagsArray);
+        return transformData;
+    }
+
+    public void processRowsAndCreateLogs(List<Map<String, String>> processedData, String partnerId, String fileId, String fileName, Timestamp initiatedOn, String partnerCode, String loadContentErrorMessage) throws IOException {
         log.info("Starting row validation and log generation for file: {}", fileName);
         List<LinkedHashMap<String, String>> successLogs = new ArrayList<>();
         List<LinkedHashMap<String, String>> errorLogs = new ArrayList<>();
         boolean hasFailures = false;
-        String schemaFilePath = dataTransformUtility.getSchemaFilePathForPartner(partnerCode);
-        for (Map<String, String> row : processedData) {
-            LinkedHashMap<String, String> linkedRow = new LinkedHashMap<>(row);
-            List<String> validationErrors = dataTransformUtility.validateRowData(linkedRow, schemaFilePath);
-            if (validationErrors.isEmpty()) {
-                linkedRow.put(Constants.STATUS, Constants.SUCCESS);
-                linkedRow.put("error", "");
-                successLogs.add(linkedRow);
-            } else {
-                linkedRow.put(Constants.STATUS, Constants.FAILED);
-                linkedRow.put("error", String.join(", ", validationErrors));
-                errorLogs.add(linkedRow);
-                hasFailures = true;
-                log.warn("Validation failed for row: {}. Errors: {}", row, validationErrors);
+        if (loadContentErrorMessage != null) {
+            LinkedHashMap<String, String> loadContentErrorLog = new LinkedHashMap<>();
+            loadContentErrorLog.put(Constants.FILE_ID, fileId);
+            loadContentErrorLog.put(Constants.FILE_NAME, fileName);
+            loadContentErrorLog.put(Constants.STATUS, Constants.FAILED);
+            loadContentErrorLog.put("error", loadContentErrorMessage);
+            errorLogs.add(loadContentErrorLog);
+            hasFailures = true;
+        } else {
+            JsonNode response = dataTransformUtility.fetchPartnerInfoUsingApi(partnerCode);
+            JsonNode fileValidation = response.path(Constants.RESULT).path("contentFileValidation");
+            if(fileValidation.isMissingNode()){
+                log.error("contentFileValidation is missing, please update in contentPartner");
+                throw new CiosContentException("ERROR","contentFileValidation is missing, please update in contentPartner",HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+            for (Map<String, String> row : processedData) {
+                LinkedHashMap<String, String> linkedRow = new LinkedHashMap<>(row);
+                List<String> validationErrors = dataTransformUtility.validateRowData(linkedRow, fileValidation);
+                if (validationErrors.isEmpty()) {
+                    linkedRow.put(Constants.STATUS, Constants.SUCCESS);
+                    linkedRow.put("error", "");
+                    successLogs.add(linkedRow);
+                } else {
+                    linkedRow.put(Constants.STATUS, Constants.FAILED);
+                    linkedRow.put("error", String.join(", ", validationErrors));
+                    errorLogs.add(linkedRow);
+                    hasFailures = true;
+                    log.warn("Validation failed for row: {}. Errors: {}", row, validationErrors);
+                }
             }
         }
         List<LinkedHashMap<String, String>> combinedLogs = new ArrayList<>();
         combinedLogs.addAll(successLogs);
         combinedLogs.addAll(errorLogs);
         String logFileName = fileName + "_" + partnerCode;
-        File logFile= writeLogsToFile(combinedLogs, logFileName);
-        SBApiResponse uploadedGCPFileResponse = storeFileToGCP.uploadCiosLogsFile(logFile,cbServerProperties.getCiosCloudContainerName(), cbServerProperties.getCiosFileLogsCloudFolderName());
+        File logFile = writeLogsToFile(combinedLogs, logFileName);
+        SBApiResponse uploadedGCPFileResponse = storeFileToGCP.uploadCiosLogsFile(logFile, cbServerProperties.getCiosCloudContainerName(), cbServerProperties.getCiosFileLogsCloudFolderName());
         String uploadedGCPFileName = "";
         if (uploadedGCPFileResponse.getParams().getStatus().equals(Constants.SUCCESS)) {
             uploadedGCPFileName = uploadedGCPFileResponse.getResult().get(Constants.NAME).toString();
@@ -282,10 +383,10 @@ public class CiosContentServiceImpl implements CiosContentService {
         Timestamp completedOn = new Timestamp(System.currentTimeMillis());
         if (hasFailures) {
             log.info("Marking file: {} as failed due to validation errors", fileName);
-            dataTransformUtility.createFileInfo(entity.path(Constants.RESULT).get(Constants.ID).asText(), fileId, fileName, initiatedOn, completedOn, Constants.CONTENT_UPLOAD_FAILED, uploadedGCPFileName);
+            dataTransformUtility.createFileInfo(partnerId, fileId, fileName, initiatedOn, completedOn, Constants.CONTENT_UPLOAD_FAILED, uploadedGCPFileName);
         } else {
             log.info("Marking file: {} as successful, no validation errors found", fileName);
-            dataTransformUtility.createFileInfo(entity.path(Constants.RESULT).get(Constants.ID).asText(), fileId, fileName, initiatedOn, completedOn, Constants.CONTENT_UPLOAD_SUCCESSFULLY, uploadedGCPFileName);
+            dataTransformUtility.createFileInfo(partnerId, fileId, fileName, initiatedOn, completedOn, Constants.CONTENT_UPLOAD_SUCCESSFULLY, uploadedGCPFileName);
         }
     }
 

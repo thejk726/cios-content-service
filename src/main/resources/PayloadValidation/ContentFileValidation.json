@@ -58,6 +58,9 @@
         "partnerCode": {
           "type": "string"
         },
+        "partnerId": {
+          "type": "string"
+        },
         "searchTags": {
           "type": "keyword"
         },

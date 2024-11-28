@@ -15,9 +15,11 @@ import java.util.Optional;
 @Repository
 public interface CornellContentRepository extends JpaRepository<CornellContentEntity, String> {
 
-    Optional<CornellContentEntity> findByExternalId(String externalId);
+    Optional<CornellContentEntity> findByExternalIdAndPartnerId(String externalId, String partnerId);
 
-    List<CornellContentEntity> findByIsActive(boolean b);
+    Optional<CornellContentEntity> findByExternalIdAndPartnerCode(String externalId, String partnerCode);
+
+    Long countByPartnerCode(String partnerCode);
 
     @Query(value = "SELECT * FROM public.cornell_content_entity c " +
             "WHERE c.is_active = :isActive " +
@@ -25,5 +27,5 @@ public interface CornellContentRepository extends JpaRepository<CornellContentEn
             nativeQuery = true)
     Page<CornellContentEntity> findAllCiosDataAndIsActive(@Param("isActive") Boolean isActive, Pageable pageable, @Param("keyword") String keyword);
 
-    List<CornellContentEntity> findByExternalIdIn(List<String> externalIds);
+    List<CornellContentEntity> findByExternalIdInAndPartnerCode(List<String> externalIds,String partnerCode);
 }

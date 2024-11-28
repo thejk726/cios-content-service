@@ -21,7 +21,7 @@ public class KafkaProducer {
             String message = objectMapper.writeValueAsString(data);
             log.info("KafkaProducer::sendCornellData: topic: {}", topic);
             this.kafkaTemplate.send(topic, message);
-            log.info("Data sent to kafka topic {} and message is {}", topic, message);
+            log.info("Data sent to kafka topic {} and message is {}", topic);
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
